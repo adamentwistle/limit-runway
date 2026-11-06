@@ -1,0 +1,5 @@
+node_modules/
+*.log
+.claude/settings.local.json
+herdr/mods/runway/jsconfig.json
+herdr/mods/runway/*.d.ts

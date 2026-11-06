@@ -1,0 +1,37 @@
+{
+  "name": "limit-runway",
+  "version": "0.1.0",
+  "description": "Forecasts when a coding-agent plan limit will run out, pauses agents before that, and resumes them at reset.",
+  "type": "module",
+  "bin": {
+    "runway": "bin/runway.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "herdr",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "claude-code",
+    "codex",
+    "usage",
+    "rate-limit",
+    "herdr",
+    "herdr-mod"
+  ],
+  "license": "MIT",
+  "author": "Adam Entwistle <adam@optaimi.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adamentwistle/limit-runway.git"
+  },
+  "homepage": "https://github.com/adamentwistle/limit-runway"
+}
