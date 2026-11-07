@@ -8,7 +8,7 @@ import { Background, PathBuilder, div } from "gpui-kit";
 import { HoverCard, h_flex, v_flex } from "gpui-base";
 import { settings } from "herdr";
 import {
-  INFO_LINES, INSTALL_LINE, RUNWAY_LIGHTS, menuOf, appSize, axisTime, chartOf, chaseFrames, chaseStops, controlWord, curveThrough, flapChars, heroOf, horizonOf, CLAUDE_ORANGE, LANE, PLANE_WHITE, planesOf, lightsOf, moodOf, nowOf, othersOf,
+  INFO, INSTALL_LINE, infoWidth, RUNWAY_LIGHTS, menuOf, appSize, axisTime, chartOf, chaseFrames, chaseStops, controlWord, curveThrough, flapChars, heroOf, horizonOf, CLAUDE_ORANGE, LANE, PLANE_WHITE, planesOf, lightsOf, moodOf, nowOf, othersOf,
   pauseLine, percentText, rowTime, runwayOf, sceneOf, stateWord, toneOf,
 } from "./logic.js";
 
@@ -325,11 +325,24 @@ function others(view, limits, now, t, panelWidth, wide, side) {
 const iconButton = (id, glyph, t) => h_flex().id(id).size(24).flex_none().items_center().justify_center().rounded(7).bg(t.raised).border(1).border_color(t.border)
   .text_size(12).font_semibold().text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover)).child(glyph);
 
-// Hover the "i" for about 150 ms and a few lines on how it works show under it.
-function info(t) {
+const sectionLabel = (text, t) => div().text_size(10.5).font_semibold().text_color(t.dim).child(text.toUpperCase());
+
+// The info card: how to read the scene, then each control with one plain line. Scrolls when the panel is short.
+function infoCard(id, t, width, maxHeight) {
+  return v_flex().id(id).w(width).max_h(maxHeight).overflow_y_scrollbar().gap(12).p(14).rounded(10).bg(t.popover).border(1).border_color(t.border)
+    .child(v_flex().gap(6).child(sectionLabel("How it works", t))
+      .children(INFO.how.map((line) => div().text_size(12).line_height(1.45).text_color(t.foreground).child(line))))
+    .child(div().h(1).w_full().flex_none().bg(t.border))
+    .child(v_flex().gap(9).child(sectionLabel("Controls", t))
+      .children(INFO.controls.map(({ name, text }) => v_flex().gap(2)
+        .child(div().text_size(12).font_semibold().text_color(t.foreground).child(name))
+        .child(div().text_size(12).line_height(1.45).text_color(t.muted).child(text)))));
+}
+
+// Hover the "i" for about 150 ms and the card opens under it, right-aligned to it so it stays inside the panel.
+function info(t, width, maxHeight) {
   return h_flex().flex_none().child(HoverCard.new("info-card").open_delay(150).close_delay(200).anchor("bottom_right").trigger(iconButton("info", "i", t))
-    .content(v_flex().id("info-lines").w(260).gap(6).p(12).rounded(8).bg(t.popover).border(1).border_color(t.border)
-      .children(INFO_LINES.map((line) => div().text_size(12).line_height(1.4).text_color(t.foreground).child(line)))));
+    .content(infoCard("info-lines", t, width, maxHeight)));
 }
 
 const menuButton = (view, t) => iconButton("menu", "\u22EF", t).on_click((_event, cx) => view.toggleMenu(cx));
@@ -412,7 +425,7 @@ export function panel(view, t) {
   const head = h_flex().flex_none().h(32).gap(10).px(side).mt(wide ? 16 : 12).items_center()
     .child(div().flex_1().min_w(0).text_size(13).font_semibold().text_color(t.foreground).child("Runway"))
     .when(Boolean(stateWord(view.reply)), (e) => e.child(pill(stateWord(view.reply), t)))
-    .when(known, (e) => e.child(info(t)).child(menuButton(view, t)))
+    .when(known, (e) => e.child(info(t, infoWidth(width, side), Math.max(160, height - 64))).child(menuButton(view, t)))
     .when(known && wide && Boolean(view.reply.limits?.length), (e) => e.child(h_flex().flex_none().gap(8).when(!view.confirming, (b) => b.w(104)).child(control(view, t))));
 
   if (view.missing) {
@@ -436,5 +449,6 @@ export function panel(view, t) {
       .when(!view.problem && Boolean(notes.length), (e) => e.child(message("notes", notes.join(". "), t.muted)))
       .when(!wide, (e) => e.child(control(view, t)))
       .when(Boolean(pinControl(view, t)), (e) => e.child(pinControl(view, t))))
-    .when(view.menuOpen, (e) => e.child(menuList(view, t, (wide ? 16 : 12) + 36, side)));
+    .when(view.menuOpen, (e) => e.child(menuList(view, t, (wide ? 16 : 12) + 36, side)))
+    .when(Boolean(view.infoOpen), (e) => e.child(div().absolute().top((wide ? 16 : 12) + 36).right(side).child(infoCard("info-panel", t, infoWidth(width, side), Math.max(160, height - 64)))));
 }

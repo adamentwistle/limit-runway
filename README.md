@@ -124,7 +124,7 @@ It puts you on a runway at dusk: how far along you are is how much you've used, 
 
 The pill at the top says **Watching** only while `runway watch --act` is running, because that's the watcher that can pause things, and **Paused** while paused. Otherwise there's no pill. A report-only `runway watch` doesn't count.
 
-Beside it, hover **i** for how it works. **⋯** opens a menu of the CLI's commands: the Claude login on or off, start or stop the pausing watcher (it starts in a Herdr terminal of its own with `hc`), pause for 30 minutes or until the next reset, resume, and install or remove the Claude Code hook. Anything that can pause agents asks first.
+Beside it, hover **i** for how it works and what each control does. **⋯** opens a menu of the CLI's commands: the Claude login on or off, start or stop the pausing watcher (it starts in a Herdr terminal of its own with `hc`), pause for 30 minutes or until the next reset, resume, and install or remove the Claude Code hook. Anything that can pause agents asks first.
 
 ## Tested
 

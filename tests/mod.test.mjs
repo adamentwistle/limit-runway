@@ -7,7 +7,7 @@ import { root } from "./helpers.mjs";
 import { fakeCx, world } from "./stubs.mjs";
 
 const { default: Runway } = await import("../herdr/mods/runway/main.js");
-const { INFO_LINES, INSTALL_LINE, commandNames, menuOf, stateWord, toneOf, watchStartArgs } = await import("../herdr/mods/runway/logic.js");
+const { INFO, INSTALL_LINE, infoWidth, commandNames, menuOf, stateWord, toneOf, watchStartArgs } = await import("../herdr/mods/runway/logic.js");
 
 const WINDOWS = process.platform === "win32";
 const AN_HOUR_ON = () => new Date(Date.now() + 2 * 3600000).toISOString();
@@ -360,13 +360,36 @@ test("stopping the watcher doesn't ask", async () => {
   assert.deepEqual(asked[1].args, ["watch", "--stop", "--json"]);
 });
 
-test("the info button says how it works in a few short lines", async () => {
+test("the info card says how it works, then what every control does", () => {
+  assert.ok(INFO.how.length >= 3 && INFO.how.length <= 6);
+  const how = INFO.how.join(" ");
+  for (const word of [/orange/, /white/, /100%/, /sun/i, /reset/, /fog/i, /forecast/]) assert.match(how, word);
+  assert.deepEqual(INFO.controls.map((c) => c.name), ["Pause", "Use Claude login", "Pausing watcher", "Pause for 30m or until reset", "Resume", "Claude Code hook"]);
+  const said = Object.fromEntries(INFO.controls.map((c) => [c.name, c.text]));
+  assert.match(said["Use Claude login"], /api\.anthropic\.com/);
+  assert.match(said["Use Claude login"], /5 min/);
+  assert.match(said["Pausing watcher"], /95%/);
+  assert.match(said["Pausing watcher"], /30 min/);
+  assert.match(said["Pausing watcher"], /a minute after/);
+  assert.match(said["Pause for 30m or until reset"], /interrupts working agents/i);
+  assert.match(said["Claude Code hook"], /tool call/);
+  assert.match(said["Claude Code hook"], /user settings/);
+  for (const { text } of INFO.controls) assert.ok(text.length <= 140, text);
+});
+
+test("the info card fits the panel: 320 wide, less in a narrow one", () => {
+  assert.equal(infoWidth(1000, 24), 320);
+  assert.equal(infoWidth(320, 16), 288);
+});
+
+test("runway.info opens and closes the card without a pointer", async () => {
+  Object.assign(world, { tree: null, ran: [], commands: ["info"] });
   script(ok(menuReply()));
-  const { tree } = await open();
-  assert.ok(tree().find("info"));
-  assert.ok(INFO_LINES.length >= 3 && INFO_LINES.length <= 5);
-  assert.match(INFO_LINES.join(" "), /watcher/);
-  for (const line of INFO_LINES) assert.ok(line.length < 120, line);
+  const { view, cx, tree } = await open({ overlay: "o1" });
+  assert.ok(tree().find("info-panel"));
+  assert.match(tree().find("info-panel").text(), /Claude Code hook/);
+  view.toggleInfo(cx);
+  assert.equal(tree().find("info-panel"), null);
 });
 
 test("runway.menu opens the overlay's menu", async () => {

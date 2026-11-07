@@ -75,13 +75,26 @@ export function menuOf(reply, now) {
   return items;
 }
 
-// What the info button says.
-export const INFO_LINES = [
-  "Readings come from the runway CLI: Claude's usage caches or login, and Codex's session files, every minute.",
-  "Each plane is a plan at its most at-risk limit. The far end is 100% and the sun is the reset.",
-  "The sky and lights follow the forecast. Fog means there isn't one yet.",
-  "It only pauses agents if you start the pausing watcher, or press Pause.",
-];
+// What the info card says: how to read the scene, then what each control does. Kept to the CLI's defaults and README.
+export const INFO = {
+  how: [
+    "Readings come from the runway CLI every minute: Claude usage caches, or your login if allowed, and Codex session files.",
+    "Each plane is a plan at its most at-risk limit, Claude in orange and Codex in white.",
+    "How far along is how much is used. The far end is 100% and the sun is the reset.",
+    "The sky and lights follow the forecast. Fog means there isn't one yet.",
+  ],
+  controls: [
+    { name: "Pause", text: "Pauses every plan now, until you press Resume. Asks first, then interrupts working agents in Herdr." },
+    { name: "Use Claude login", text: "When no usage cache is fresh, sends your Claude Code login to api.anthropic.com for your limits, at most every 5 min." },
+    { name: "Pausing watcher", text: "Pauses at 95%, or when 100% is forecast within 30 min, and resumes a minute after the reset. Off until started." },
+    { name: "Pause for 30m or until reset", text: "Pauses now and interrupts working agents in Herdr. Ends by itself at that time." },
+    { name: "Resume", text: "Ends the pause at once, and sends a line to interrupted agents so they carry on." },
+    { name: "Claude Code hook", text: "While paused, holds each Claude Code tool call instead of interrupting the turn, and lets go on resume. Installed in your user settings." },
+  ],
+};
+
+// The card is 320 wide, and narrower when the panel is, so it never leaves it.
+export const infoWidth = (panelWidth, side) => Math.min(320, panelWidth - 2 * side);
 
 // A limit's colour. Only a forecast can make it anything but calm, and with no forecast it claims nothing.
 export function toneOf(limit, now) {
