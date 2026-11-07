@@ -57,8 +57,9 @@ export const watchStartArgs = (program) => ["run", "--bg", "--no-parent", "--kee
  */
 export function menuOf(reply, now) {
   const items = [];
-  const login = reply?.login === true;
-  items.push({ id: "login", label: "Use Claude login", state: login ? "On" : "Off", run: { cli: ["login", login ? "off" : "on"] }, confirm: null });
+  // An older CLI doesn't say, so there's no state to show, and the press turns it on.
+  const login = reply?.login === true, known = typeof reply?.login === "boolean";
+  items.push({ id: "login", label: "Use Claude login", state: known ? (login ? "On" : "Off") : null, run: { cli: ["login", login ? "off" : "on"] }, confirm: null });
   items.push(reply?.watching
     ? { id: "watch", label: "Stop pausing watcher", state: null, run: { cli: ["watch", "--stop", "--json"] }, confirm: null }
     : { id: "watch", label: "Start pausing watcher", state: null, run: { watcher: "start" }, confirm: "Start watcher" });

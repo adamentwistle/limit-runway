@@ -291,6 +291,9 @@ test("the menu offers what the CLI can do from here, and only what fits the stat
   for (const item of [now.login, now.watch, now.resume, now.hook]) assert.equal(item.confirm, null, item.id);
 
   assert.deepEqual(ids(menuOf({ ...quiet, limits: [] }, NOW)), ["login", "watch", "pause-30m", "hook"]);
+  const older = menuOf({ ...quiet, login: undefined }, NOW)[0];
+  assert.equal(older.state, null, "an older CLI doesn't say");
+  assert.deepEqual(older.run, { cli: ["login", "on"] });
 });
 
 test("the watcher starts in a kept Herdr terminal of its own", () => {
