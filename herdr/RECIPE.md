@@ -2,7 +2,7 @@
 
 A panel that puts you on a runway at dusk. How far along you are is how much of a plan limit you've used, the far end is 100%, and the sun on the horizon is the reset. It says how long until the first limit runs out, and whether agents are paused. One button pauses them and releases them. The numbers and the pausing come from the `runway` CLI, which also works without Herdr.
 
-![Runway](preview.png)
+![The Runway panel docked beside a terminal in a Herdr window, with made-up limits](preview.png)
 
 ## What you see
 
