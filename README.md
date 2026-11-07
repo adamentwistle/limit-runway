@@ -4,7 +4,7 @@ Forecasts when a Claude Code or Codex plan limit will run out, pauses your agent
 
 Works on its own, in any terminal. There is also a panel for [Herdr](https://herdr.dev).
 
-![The Runway panel in Herdr, with made-up data](herdr/preview.png)
+![The Runway panel docked in Herdr](herdr/preview.png)
 
 ## Start
 
