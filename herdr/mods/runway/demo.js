@@ -76,7 +76,7 @@ const SCENES = {
 
 export function demoReply(now, scene = "watching") {
   const paused = scene === "paused";
-  const limits = (SCENES[scene] ?? SCENES.watching)(now).map((def) => limit(now, { id: def.label.toLowerCase(), windowMinutes: 300, step: 3, ...def }));
+  const limits = (SCENES[scene] ?? SCENES.watching)(now).map((def) => ({ provider: def.label.split(" ")[0].toLowerCase(), ...limit(now, { id: def.label.toLowerCase(), windowMinutes: 300, step: 3, ...def }) }));
   const until = Date.parse(limits[0].resetAt) + MINUTE;
   const reason = "Claude 5-hour is forecast to hit 100% within 30 minutes";
   return {

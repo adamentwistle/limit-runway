@@ -11,7 +11,7 @@ import { drawn, fakeCx, world } from "./stubs.mjs";
 const { default: Runway } = await import("../herdr/mods/runway/main.js");
 const { CLAUDE_SESSION, demoReply } = await import("../herdr/mods/runway/demo.js");
 const {
-  RUNWAY_LIGHTS, appSize, axisTime, chartOf, chaseFrames, chaseStops, curveThrough, flapChars, heroOf, horizonOf, lightsOf, moodOf, othersOf, pauseLine, rowTime, runwayOf, sceneOf, shortTime, timeParts,
+  RUNWAY_LIGHTS, appSize, axisTime, chartOf, chaseFrames, chaseStops, curveThrough, flapChars, heroOf, planesOf, providerOf, horizonOf, lightsOf, moodOf, othersOf, pauseLine, rowTime, runwayOf, sceneOf, shortTime, timeParts,
 } = await import("../herdr/mods/runway/logic.js");
 
 const MIN = 60000, NOW = new Date(2026, 10, 6, 12, 0).getTime();
@@ -277,7 +277,7 @@ function placed(element, out = []) {
 const ZOOMS = [1, 1.1, 1.2, 1.5, 2];
 const BOXES = [{ width: 340, height: 700, chart: 420 }, { width: 1000, height: 760, chart: 470 }, { width: 1333, height: 833, chart: 560 }];
 const SCENES = [true, "paused", "safe", "limit", "few", "stale"];
-const MARKS = ["you-used", "far-time", "landing", "reset-time"];
+const MARKS = ["used-claude", "used-codex", "far-time", "landing", "reset-time"];
 
 test("sizes reach the app's own units at any zoom", () => {
   assert.deepEqual(appSize({ width: 1200, height: 600 }, 1.2), { width: 1000, height: 500 });
@@ -306,10 +306,10 @@ test("the reset's chip stays clear of the hero at every zoom, even in a short sc
 test("the marks a state needs are all there at every zoom", () => {
   const ids = (demo, zoom) => placed(zoomed(zoom, demo, BOXES[1]).tree.find("scene")).map((i) => i.id).filter((id) => MARKS.includes(id)).sort();
   for (const zoom of ZOOMS) {
-    assert.deepEqual(ids(true, zoom), ["far-time", "reset-time", "you-used"], `at ${zoom}`);
-    assert.deepEqual(ids("safe", zoom), ["landing", "reset-time", "you-used"], `at ${zoom}`);
-    assert.deepEqual(ids("few", zoom), ["reset-time", "you-used"], `at ${zoom}`);
-    assert.deepEqual(ids("stale", zoom), ["reset-time", "you-used"], `at ${zoom}`);
+    assert.deepEqual(ids(true, zoom), ["far-time", "reset-time", "used-claude", "used-codex"], `at ${zoom}`);
+    assert.deepEqual(ids("safe", zoom), ["landing", "reset-time", "used-claude", "used-codex"], `at ${zoom}`);
+    assert.deepEqual(ids("few", zoom), ["reset-time", "used-claude", "used-codex"], `at ${zoom}`);
+    assert.deepEqual(ids("stale", zoom), ["reset-time", "used-claude", "used-codex"], `at ${zoom}`);
   }
 });
 
@@ -481,4 +481,40 @@ test("status --json carries a series from the history it keeps", async (t) => {
   const session = reply.limits.find((l) => l.id === "claude.session");
   assert.deepEqual(session.samples.map((s) => s.used), [40, 42, 44, 46]);
   for (const sample of session.samples) assert.deepEqual(Object.keys(sample), ["t", "used"]);
+});
+
+test("a limit's provider comes from the reply, or from its id", () => {
+  assert.equal(providerOf({ provider: "codex", id: "x" }), "codex");
+  assert.equal(providerOf({ id: "claude.session" }), "claude");
+  assert.equal(providerOf({ id: "Codex weekly" }), "codex");
+});
+
+test("each provider gets one plane, at its own most at-risk limit", () => {
+  const planes = planesOf({ limits: [
+    safe("cw", { provider: "claude", used: 70 }), hits("cs", 126, { provider: "claude", used: 40 }),
+    safe("xs", { provider: "codex", used: 9 }), limit("xw", "few-samples", { provider: "codex", used: 30 }),
+  ] }, NOW);
+  assert.deepEqual(planes.map((p) => [p.provider, p.limit.id]), [["claude", "cs"], ["codex", "xw"]]);
+  assert.ok(planes[0].lane < 0 && planes[1].lane > 0, "Claude left of the centreline, Codex right");
+});
+
+test("the soonest to run out wins within a provider, and 100% wins over that", () => {
+  const planes = planesOf({ limits: [hits("a", 200, { provider: "codex" }), hits("b", 60, { provider: "codex" })] }, NOW);
+  assert.equal(planes[0].limit.id, "b");
+  const full = limit("f", "at-limit", { provider: "claude", used: 100, forecast: { state: "at-limit", hitsAt: at(0) } });
+  assert.equal(planesOf({ limits: [hits("s", 5, { provider: "claude" }), full] }, NOW)[0].limit.id, "f");
+});
+
+test("one provider draws one plane on the centreline", () => {
+  const planes = planesOf({ limits: [safe("cs", { provider: "claude" }), safe("cw", { provider: "claude", used: 80 })] }, NOW);
+  assert.equal(planes.length, 1);
+  assert.equal(planes[0].limit.id, "cw");
+  assert.equal(planes[0].lane, 0);
+  assert.deepEqual(planesOf({ limits: [] }, NOW), []);
+});
+
+test("the demo puts Claude and Codex on the runway, and the mood still follows the hero", () => {
+  const reply = demoReply(NOW), planes = planesOf(reply, NOW), hero = heroOf(reply, NOW);
+  assert.deepEqual(planes.map((p) => [p.provider, p.limit.label]), [["claude", "Claude 5-hour"], ["codex", "Codex 5-hour"]]);
+  assert.equal(moodOf(hero, reply), "warn");
 });
