@@ -98,7 +98,7 @@ function login(args, paths) {
     return 2;
   }
   saveLoginChoice(choice === "on", paths);
-  say(choice === "on" ? "Runway will use your Claude login when no usage cache is fresh." : "Runway won't use your Claude login.");
+  say(choice === "on" ? "Runway will update with your usage shortly." : "Runway won't use your Claude login.");
   return 0;
 }
 
