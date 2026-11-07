@@ -2,7 +2,7 @@
 // logs it, prints it or writes it, and it is never refreshed: Claude Code does that when it runs.
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { homedir, platform, userInfo } from "node:os";
 import { join } from "node:path";
 
@@ -30,13 +30,29 @@ export function tokenFrom(text, now = Date.now()) {
   return { status: "ok", token };
 }
 
-// macOS: the keychain names Claude Code uses for this profile, in the order to try them. No other entry is ever read.
+const suffixed = (dir) => `${SERVICE}-${createHash("sha256").update(dir.normalize("NFC")).digest("hex").slice(0, 8)}`;
+
+// The ~/.claude-* folders, which are the other profiles Claude Code may be run with through CLAUDE_CONFIG_DIR.
+export function knownProfiles(env = process.env) {
+  const home = env.HOME || env.USERPROFILE || homedir();
+  try {
+    return readdirSync(home, { withFileTypes: true })
+      .filter((entry) => entry.isDirectory() && entry.name.startsWith(".claude-"))
+      .map((entry) => join(home, entry.name))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+// macOS: the keychain names Claude Code uses, in the order to try them. No other entry is ever read. With CLAUDE_CONFIG_DIR
+// set, it's that profile's entry. Without it, as when Herdr or another app starts runway without the shell's settings, it's
+// the plain name first and then each ~/.claude-* profile's.
 export function serviceNames(env = process.env) {
   const profile = env.CLAUDE_CONFIG_DIR;
-  if (!profile) return [SERVICE];
-  const path = profile.normalize("NFC");
-  const names = [`${SERVICE}-${createHash("sha256").update(path).digest("hex").slice(0, 8)}`];
-  if (path === join(env.HOME || homedir(), ".claude")) names.push(SERVICE);
+  if (!profile) return [SERVICE, ...knownProfiles(env).map(suffixed)];
+  const names = [suffixed(profile)];
+  if (profile.normalize("NFC") === join(env.HOME || homedir(), ".claude")) names.push(SERVICE);
   return names;
 }
 
