@@ -1,10 +1,11 @@
 // The Runway panel. It reads the CLI and shows what it says. The only things it starts are a press on Pause or Resume, and
-// finishing a pause whose time is up.
+// finishing a pause whose time is up. Opened as an overlay it also has Pin to sidebar, which only changes the layout.
 import { View } from "gpui-kit";
-import { exec, props, theme } from "herdr";
+import { exec, layout, nextCommand, props, run, shared, theme } from "herdr";
 import { platform } from "os";
 import { demoReply } from "./demo.js";
 import { commandNames, pauseArgs, readReply, resumeArgs, statusArgs } from "./logic.js";
+import { pinPlan } from "./pin.js";
 import { panel, prepare } from "./view.js";
 
 const REFRESH_MS = 60000;
@@ -24,7 +25,16 @@ export default class Runway extends View {
     this.size = null;
     this.plot = null;
     this.paths = {};
+    this.overlay = given.overlay ?? null;
     this.names = given.command ? [given.command] : commandNames(/^win/i.test(String(platform())));
+    // A key can press it: "runway.pin" reaches the open overlay.
+    if (this.overlay != null) {
+      cx.spawn(async (cx) => {
+        while (!this.closed) {
+          if ((await nextCommand()) === "pin") this.pin(cx);
+        }
+      });
+    }
     if (this.demo) {
       this.reply = demoReply(Date.now(), this.demo.scene);
       return;
@@ -100,6 +110,23 @@ export default class Runway extends View {
       }
       this.refresh(cx);
     });
+  }
+
+  // Read live on every render, so a hide from anywhere else shows here too.
+  pinning() {
+    if (this.overlay == null) return null;
+    return pinPlan(layout(), shared("layout"));
+  }
+
+  pin(cx) {
+    const plan = this.pinning();
+    if (!plan) return;
+    for (const [name, args] of plan.commands) run(name, args);
+    cx.notify();
+  }
+
+  close() {
+    this.closed = true;
   }
 
   cancel(cx) {
