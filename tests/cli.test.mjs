@@ -194,7 +194,8 @@ test("pause --herdr with no plan named takes any working agent, and a missing hc
   const box = sandbox(t);
   box.terminals([agent("t1", "pi"), agent("t2", "codex")]);
   await run(["pause", "--herdr"], box.env);
-  assert.deepEqual(box.hcCalls().filter((c) => c[0] === "interrupt").map((c) => c[1]), ["t1", "t2"]);
+  // The interrupts go out together, so the order they land in the log is not fixed.
+  assert.deepEqual(box.hcCalls().filter((c) => c[0] === "interrupt").map((c) => c[1]).sort(), ["t1", "t2"]);
   const reply = await run(["pause", "--herdr", "--json"], { ...box.env, RUNWAY_HC_ARGV: JSON.stringify(["no-such-program-here"]) });
   assert.equal(JSON.parse(reply.stdout).herdrError, "hc not found");
   assert.equal(existsSync(box.paths.pause), true);

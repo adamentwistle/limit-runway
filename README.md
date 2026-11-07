@@ -98,9 +98,9 @@ The commands get `RUNWAY_REASON`, `RUNWAY_UNTIL`, `RUNWAY_LIMITS` and `RUNWAY_PR
 
 | What | Why |
 | --- | --- |
-| `~/.cache/orchi/usage.json`, `~/.cache/ccstatusline/usage.json` | Claude usage other tools already keep. Used first, and need no login |
+| `~/.cache/orchi/usage.json`, and ccstatusline's file in `~/.cache/ccstatusline` | Claude usage other tools already keep. Used first, and need no login. ccstatusline 2.2.33 and later write one `usage-<hash>.json` per Claude profile: runway reads the one for `CLAUDE_CONFIG_DIR`, or the newest when that isn't set, and the old `usage.json` only when there is none |
 | `~/.codex/sessions` | The end of your newest session files, for rate limit lines only |
-| `.credentials.json` in your Claude Code config folder, or on macOS the one keychain entry Claude Code uses | Your login, only when no cache is under 15 minutes old |
+| `.credentials.json` in your Claude Code config folder, or on macOS the keychain entry Claude Code uses for that profile | Your login, only when no cache is under 15 minutes old. With no `CLAUDE_CONFIG_DIR`, as when an app such as Herdr starts runway without your shell's settings, macOS tries the plain entry and then each `~/.claude-*` profile's, the most recently used first, and takes the first usable login |
 | Claude Code settings files | Read only, to see if the hook is installed |
 
 **One thing can go over the network, and only if you agree:** when no cache is fresh, a GET to `https://api.anthropic.com/api/oauth/usage` with your login, at most every 5 minutes. `runway status` asks once in a terminal. `runway login on` and `runway login off` set it, and until then nothing is sent. The address is fixed in the code. Redirects aren't followed, and the login is never refreshed, logged, printed or written anywhere. ccstatusline uses the same call. It isn't a published API, so it can change. With it off, only caches are used, so without ccstatusline or Orchi there are no Claude numbers. `--no-endpoint` turns it off for one run.
@@ -121,6 +121,8 @@ A forecast only counts if it can be trusted, and the panel and `watch` use the s
 Ask your agent to add it from [herdr.dev/mods](https://herdr.dev/gallery/?type=mods), or point it at this repo. It reads [the recipe](herdr/RECIPE.md) first. By hand, copy `herdr/mods/runway` into `~/.config/herdr-app/mods` and merge `herdr/keys.json` into yours. `ctrl-shift-m` opens it. In that overlay, **Pin to sidebar** puts it in your layout as a side panel, and **Unpin from sidebar** hides it again. On Herdr's shipped layouts it can only show or hide a block that's already there, so duplicate the layout first.
 
 It puts you on a runway at dusk: how far along you are is how much you've used, the far end is 100%, and the sun on the horizon is the reset. The time until the first limit runs out sits on a departures-board display, the lights and sky follow the forecast, and with no forecast there's fog ahead. The other limits sit under it with sparklines, beside the state and a Pause or Resume button. It runs the `runway` CLI through `exec`, and tells you how to install it if it's missing. Pause there includes `--herdr`, so it interrupts working agents.
+
+The pill at the top says **Watching** only while `runway watch --act` is running, because that's the watcher that can pause things. A report-only `runway watch` prints what it would do and doesn't count, so with only that running the pill says **Not watching**.
 
 ## Tested
 

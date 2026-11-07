@@ -1,6 +1,6 @@
 // The login path, against a local fake server. The real endpoint is never called: every request here goes to 127.0.0.1.
 import assert from "node:assert/strict";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import test from "node:test";
@@ -22,6 +22,9 @@ async function fakeServer(t, handler) {
   return { seen, target: `http://127.0.0.1:${server.address().port}/api/oauth/usage` };
 }
 
+// These tests read the login from the credentials file whatever the machine, so a Mac's real keychain is never asked.
+const fileLogin = (options) => readLogin({ ...options, system: "linux" });
+
 const credentials = (box, value) => {
   mkdirSync(box.env.CLAUDE_CONFIG_DIR, { recursive: true });
   writeFileSync(join(box.env.CLAUDE_CONFIG_DIR, ".credentials.json"), typeof value === "string" ? value : JSON.stringify(value));
@@ -38,7 +41,7 @@ test("a good answer gives limits, with the headers the endpoint expects", async 
   const box = sandbox(t);
   credentials(box, { claudeAiOauth: { accessToken: TOKEN, refreshToken: "never-used" } });
   const server = await fakeServer(t, (_req, res) => { res.writeHead(200, { "content-type": "application/json" }); res.end(GOOD); });
-  const reply = await readEndpoint({ paths: box.paths, env: box.env, target: server.target, now: Date.UTC(2029, 0, 1) });
+  const reply = await readEndpoint({ paths: box.paths, env: box.env, login: fileLogin, target: server.target, now: Date.UTC(2029, 0, 1) });
   assert.equal(reply.status, "ok");
   assert.deepEqual(reply.limits.map((l) => [l.id, l.used]), [["claude.session", 29], ["claude.weekly", 40]]);
   const [request] = server.seen;
@@ -53,7 +56,7 @@ test("the login ends up in no file and no state", async (t) => {
   const box = sandbox(t);
   credentials(box, { claudeAiOauth: { accessToken: TOKEN } });
   const server = await fakeServer(t, (_req, res) => { res.writeHead(200); res.end(GOOD); });
-  const reply = await readEndpoint({ paths: box.paths, env: box.env, target: server.target });
+  const reply = await readEndpoint({ paths: box.paths, env: box.env, login: fileLogin, target: server.target });
   assert.ok(!JSON.stringify(reply).includes(TOKEN));
   for (const name of readdirSync(box.state)) assert.ok(!readFileSync(join(box.state, name), "utf8").includes(TOKEN), name);
 });
@@ -63,11 +66,11 @@ test("it waits five minutes between requests", async (t) => {
   credentials(box, { claudeAiOauth: { accessToken: TOKEN } });
   const server = await fakeServer(t, (_req, res) => { res.writeHead(200); res.end(GOOD); });
   const now = Date.UTC(2029, 0, 1);
-  await readEndpoint({ paths: box.paths, env: box.env, target: server.target, now });
-  const second = await readEndpoint({ paths: box.paths, env: box.env, target: server.target, now: now + 60000 });
+  await readEndpoint({ paths: box.paths, env: box.env, login: fileLogin, target: server.target, now });
+  const second = await readEndpoint({ paths: box.paths, env: box.env, login: fileLogin, target: server.target, now: now + 60000 });
   assert.equal(second.status, "waiting");
   assert.equal(server.seen.length, 1);
-  await readEndpoint({ paths: box.paths, env: box.env, target: server.target, now: now + 301000 });
+  await readEndpoint({ paths: box.paths, env: box.env, login: fileLogin, target: server.target, now: now + 301000 });
   assert.equal(server.seen.length, 2);
 });
 
@@ -76,7 +79,7 @@ test("a redirect is never followed", async (t) => {
   credentials(box, { claudeAiOauth: { accessToken: TOKEN } });
   const elsewhere = await fakeServer(t, (_req, res) => { res.writeHead(200); res.end(GOOD); });
   const server = await fakeServer(t, (_req, res) => { res.writeHead(302, { location: elsewhere.target }); res.end(); });
-  const reply = await readEndpoint({ paths: box.paths, env: box.env, target: server.target });
+  const reply = await readEndpoint({ paths: box.paths, env: box.env, login: fileLogin, target: server.target });
   assert.equal(reply.status, "endpoint-changed");
   assert.equal(elsewhere.seen.length, 0);
 });
@@ -88,7 +91,7 @@ test("each answer maps to its status", async (t) => {
     credentials(box, { claudeAiOauth: { accessToken: TOKEN } });
     const server = await fakeServer(t, (_req, res) => { res.writeHead(code, code === 429 ? { "retry-after": "120" } : {}); res.end("{}"); });
     const now = Date.UTC(2029, 0, 1);
-    const reply = await readEndpoint({ paths: box.paths, env: box.env, target: server.target, now });
+    const reply = await readEndpoint({ paths: box.paths, env: box.env, login: fileLogin, target: server.target, now });
     assert.equal(reply.status, status);
     const state = JSON.parse(readFileSync(box.paths.endpoint, "utf8"));
     assert.equal(state.status, status);
@@ -128,7 +131,7 @@ test("an expired login isn't sent", async (t) => {
   const box = sandbox(t);
   credentials(box, { claudeAiOauth: { accessToken: TOKEN, expiresAt: 1000 } });
   const server = await fakeServer(t, (_req, res) => { res.writeHead(200); res.end(GOOD); });
-  const reply = await readEndpoint({ paths: box.paths, env: box.env, target: server.target });
+  const reply = await readEndpoint({ paths: box.paths, env: box.env, login: fileLogin, target: server.target });
   assert.equal(reply.status, "login-expired");
   assert.equal(server.seen.length, 0);
 });
@@ -151,11 +154,49 @@ test("macOS asks for the one named keychain entry and nothing else", async () =>
 });
 
 test("macOS keychain names: a suffix for a profile, and the plain name for ~/.claude too", () => {
-  assert.deepEqual(serviceNames({}), ["Claude Code-credentials"]);
+  assert.deepEqual(serviceNames({ HOME: "/h" }), ["Claude Code-credentials"]);
   const [suffixed] = serviceNames({ CLAUDE_CONFIG_DIR: "/h/.other", HOME: "/h" });
   assert.match(suffixed, /^Claude Code-credentials-[0-9a-f]{8}$/);
   assert.equal(serviceNames({ CLAUDE_CONFIG_DIR: "/h/.other", HOME: "/h" }).length, 1);
   assert.equal(keychainAccount({ USER: "odd name!" }), "claude-code-user");
+});
+
+test("macOS with no profile set tries the plain name, then each ~/.claude-* profile", async (t) => {
+  const box = sandbox(t);
+  mkdirSync(join(box.home, ".claude-work"));
+  mkdirSync(join(box.home, ".claude"));
+  writeFileSync(join(box.home, ".claude-notes"), "a file, not a profile");
+  const env = { USER: "person", HOME: box.home };
+  const work = serviceNames({ ...env, CLAUDE_CONFIG_DIR: join(box.home, ".claude-work") })[0];
+  assert.deepEqual(serviceNames(env), ["Claude Code-credentials", work]);
+  const asked = [];
+  const keychain = async (service) => {
+    asked.push(service);
+    return service === work ? { code: 0, value: JSON.stringify({ claudeAiOauth: { accessToken: TOKEN } }) } : { code: 44, value: "" };
+  };
+  assert.deepEqual(await readLogin({ env, system: "darwin", keychain }), { status: "ok", token: TOKEN });
+  assert.deepEqual(asked, ["Claude Code-credentials", work]);
+});
+
+test("macOS tries the most recently used profile first, and goes past an entry with no usable login", async (t) => {
+  const box = sandbox(t);
+  const env = { USER: "person", HOME: box.home };
+  const profile = (name, when) => {
+    const dir = join(box.home, name);
+    mkdirSync(dir);
+    writeFileSync(join(dir, ".claude.json"), "{}");
+    utimesSync(join(dir, ".claude.json"), when, when);
+    return serviceNames({ ...env, CLAUDE_CONFIG_DIR: dir })[0];
+  };
+  const old = profile(".claude-copy", new Date(Date.UTC(2026, 10, 7, 8)));
+  const work = profile(".claude-work", new Date(Date.UTC(2026, 10, 7, 15)));
+  const stale = profile(".claude-eval", new Date(Date.UTC(2026, 9, 13)));
+  assert.deepEqual(serviceNames(env), ["Claude Code-credentials", work, old, stale]);
+  const values = { [work]: "not a login", [old]: JSON.stringify({ claudeAiOauth: { accessToken: TOKEN } }) };
+  const keychain = async (service) => (service in values ? { code: 0, value: values[service] } : { code: 44, value: "" });
+  assert.deepEqual(await readLogin({ env, system: "darwin", keychain }), { status: "ok", token: TOKEN });
+  const expired = async (service) => (service === stale ? { code: 0, value: JSON.stringify({ claudeAiOauth: { accessToken: TOKEN, expiresAt: 1 } }) } : { code: 44, value: "" });
+  assert.equal((await readLogin({ env, system: "darwin", keychain: expired })).status, "login-expired");
 });
 
 test("macOS keychain exit codes", async () => {

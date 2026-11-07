@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { mkdirSync, utimesSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import test from "node:test";
 import { DEFAULTS } from "../src/config.js";
@@ -62,6 +63,38 @@ test("ccstatusline's file is read, with the file's time as the reading's time", 
   const found = readCache(entry);
   assert.equal(found.at, when.getTime());
   assert.deepEqual(found.limits.map((l) => [l.id, l.used]), [["claude.session", 45], ["claude.weekly", 38]]);
+});
+
+// ccstatusline 2.2.33 and later write usage-<first 16 hex of sha256 of the config dir>.json, one per Claude profile.
+const profileFile = (box, dir, value, when) => {
+  const folder = join(box.home, ".cache", "ccstatusline");
+  mkdirSync(folder, { recursive: true });
+  const path = join(folder, `usage-${createHash("sha256").update(dir).digest("hex").slice(0, 16)}.json`);
+  writeFileSync(path, JSON.stringify(value));
+  utimesSync(path, when, when);
+  return path;
+};
+
+test("ccstatusline's per-profile file is read before the old usage.json", (t) => {
+  const box = sandbox(t);
+  box.cache("ccstatusline", { weeklyUsage: 94, weeklyResetAt: "2026-11-11T21:00:00Z" });
+  const old = join(box.home, ".cache", "ccstatusline", "usage.json");
+  utimesSync(old, new Date(Date.UTC(2026, 10, 4)), new Date(Date.UTC(2026, 10, 4)));
+  const path = profileFile(box, box.env.CLAUDE_CONFIG_DIR, { weeklyUsage: 98, weeklyResetAt: "2026-11-09T04:00:00Z" }, new Date(Date.UTC(2026, 10, 7)));
+  const entry = cachePaths(box.env)[1];
+  assert.equal(entry.path, path);
+  assert.deepEqual(readCache(entry).limits.map((l) => [l.id, l.used]), [["claude.weekly", 98]]);
+});
+
+test("with no profile set, the freshest per-profile file is read, and usage.json only when there is none", (t) => {
+  const box = sandbox(t);
+  const env = { ...box.env, CLAUDE_CONFIG_DIR: "" };
+  box.cache("ccstatusline", { weeklyUsage: 94, weeklyResetAt: "2026-11-11T21:00:00Z" });
+  assert.equal(cachePaths(env)[1].path, join(box.home, ".cache", "ccstatusline", "usage.json"));
+  profileFile(box, join(box.home, ".claude"), { weeklyUsage: 10, weeklyResetAt: "2026-11-09T04:00:00Z" }, new Date(Date.UTC(2026, 10, 3)));
+  const fresh = profileFile(box, join(box.home, ".claude-work"), { weeklyUsage: 98, weeklyResetAt: "2026-11-09T04:00:00Z" }, new Date(Date.UTC(2026, 10, 7)));
+  writeFileSync(join(box.home, ".cache", "ccstatusline", "usage-0123456789abcdef.credentials.lock"), "{}");
+  assert.equal(cachePaths(env)[1].path, fresh);
 });
 
 test("orchi's file says when it was read", (t) => {
