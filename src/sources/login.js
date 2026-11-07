@@ -2,7 +2,7 @@
 // logs it, prints it or writes it, and it is never refreshed: Claude Code does that when it runs.
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir, platform, userInfo } from "node:os";
 import { join } from "node:path";
 
@@ -32,14 +32,26 @@ export function tokenFrom(text, now = Date.now()) {
 
 const suffixed = (dir) => `${SERVICE}-${createHash("sha256").update(dir.normalize("NFC")).digest("hex").slice(0, 8)}`;
 
-// The ~/.claude-* folders, which are the other profiles Claude Code may be run with through CLAUDE_CONFIG_DIR.
+// When Claude Code last wrote a profile's .claude.json, or -1 for a folder that has none, such as a backup.
+const lastUsed = (dir) => {
+  try {
+    return statSync(join(dir, ".claude.json")).mtimeMs;
+  } catch {
+    return -1;
+  }
+};
+
+// The ~/.claude-* folders, which are the other profiles Claude Code may be run with through CLAUDE_CONFIG_DIR, the most
+// recently used first, so a copy or an old profile is only tried after the one in use.
 export function knownProfiles(env = process.env) {
   const home = env.HOME || env.USERPROFILE || homedir();
   try {
     return readdirSync(home, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && entry.name.startsWith(".claude-"))
       .map((entry) => join(home, entry.name))
-      .sort();
+      .map((dir) => ({ dir, at: lastUsed(dir) }))
+      .sort((a, b) => b.at - a.at || (a.dir < b.dir ? -1 : 1))
+      .map(({ dir }) => dir);
   } catch {
     return [];
   }
@@ -77,14 +89,17 @@ const readKeychain = (service, account) => new Promise((resolve) => {
 
 export async function readLogin({ env = process.env, system = platform(), keychain = readKeychain, now = Date.now() } = {}) {
   if (system === "darwin") {
+    // The first entry with a usable login wins. Without one, the first thing that went wrong is the answer.
+    let first = null;
     for (const name of serviceNames(env)) {
       const { code, value } = await keychain(name, keychainAccount(env));
       if (code === 44) continue;
       if (code === 36) return { status: "keychain-locked" };
-      if (code !== 0) return { status: "keychain-denied" };
-      return tokenFrom(value, now);
+      const found = code === 0 ? tokenFrom(value, now) : { status: "keychain-denied" };
+      if (found.status === "ok") return found;
+      first ??= found;
     }
-    return { status: "no-login" };
+    return first ?? { status: "no-login" };
   }
   try {
     return tokenFrom(readFileSync(join(configDir(env), ".credentials.json"), "utf8"), now);

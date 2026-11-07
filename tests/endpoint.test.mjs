@@ -1,6 +1,6 @@
 // The login path, against a local fake server. The real endpoint is never called: every request here goes to 127.0.0.1.
 import assert from "node:assert/strict";
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { join } from "node:path";
 import test from "node:test";
@@ -176,6 +176,27 @@ test("macOS with no profile set tries the plain name, then each ~/.claude-* prof
   };
   assert.deepEqual(await readLogin({ env, system: "darwin", keychain }), { status: "ok", token: TOKEN });
   assert.deepEqual(asked, ["Claude Code-credentials", work]);
+});
+
+test("macOS tries the most recently used profile first, and goes past an entry with no usable login", async (t) => {
+  const box = sandbox(t);
+  const env = { USER: "person", HOME: box.home };
+  const profile = (name, when) => {
+    const dir = join(box.home, name);
+    mkdirSync(dir);
+    writeFileSync(join(dir, ".claude.json"), "{}");
+    utimesSync(join(dir, ".claude.json"), when, when);
+    return serviceNames({ ...env, CLAUDE_CONFIG_DIR: dir })[0];
+  };
+  const old = profile(".claude-copy", new Date(Date.UTC(2026, 10, 7, 8)));
+  const work = profile(".claude-work", new Date(Date.UTC(2026, 10, 7, 15)));
+  const stale = profile(".claude-eval", new Date(Date.UTC(2026, 9, 13)));
+  assert.deepEqual(serviceNames(env), ["Claude Code-credentials", work, old, stale]);
+  const values = { [work]: "not a login", [old]: JSON.stringify({ claudeAiOauth: { accessToken: TOKEN } }) };
+  const keychain = async (service) => (service in values ? { code: 0, value: values[service] } : { code: 44, value: "" });
+  assert.deepEqual(await readLogin({ env, system: "darwin", keychain }), { status: "ok", token: TOKEN });
+  const expired = async (service) => (service === stale ? { code: 0, value: JSON.stringify({ claudeAiOauth: { accessToken: TOKEN, expiresAt: 1 } }) } : { code: 44, value: "" });
+  assert.equal((await readLogin({ env, system: "darwin", keychain: expired })).status, "login-expired");
 });
 
 test("macOS keychain exit codes", async () => {
