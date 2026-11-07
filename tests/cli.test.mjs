@@ -267,3 +267,34 @@ test("runway login on and off keep the rest of the config", async (t) => {
   assert.equal(JSON.parse(readFileSync(box.paths.config, "utf8")).sources.endpoint, false);
   assert.notEqual((await run(["login", "maybe"], box.env)).code, 0);
 });
+
+test("status --json says whether the Claude login may be used", async (t) => {
+  const box = sandbox(t);
+  const login = async () => JSON.parse((await run(["status", "--json"], box.env)).stdout).login;
+  assert.equal(await login(), null);
+  await run(["login", "on"], box.env);
+  assert.equal(await login(), true);
+  await run(["login", "off"], box.env);
+  assert.equal(await login(), false);
+});
+
+test("watch --stop ends the running watcher, and says so when there's none", async (t) => {
+  const box = sandbox(t);
+  const none = await run(["watch", "--stop", "--json"], box.env);
+  assert.equal(none.code, 0);
+  assert.deepEqual(JSON.parse(none.stdout), { stopped: false });
+
+  // A stand-in watcher: a process that holds the lock and lets it go on SIGTERM, as the real one does.
+  const { spawn } = await import("node:child_process");
+  mkdirSync(box.paths.dir, { recursive: true });
+  const lock = box.paths.watchLock;
+  const child = spawn(process.execPath, ["-e", `require("fs").writeFileSync(${JSON.stringify(lock)}, String(process.pid)); process.on("SIGTERM", () => { require("fs").rmSync(${JSON.stringify(lock)}, { force: true }); process.exit(0); }); setInterval(() => {}, 1000);`]);
+  const ended = new Promise((resolve) => child.on("exit", resolve));
+  t.after(() => child.kill("SIGKILL"));
+  for (let i = 0; i < 100 && !existsSync(lock); i++) await new Promise((r) => setTimeout(r, 20));
+  const stopped = await run(["watch", "--stop", "--json"], box.env);
+  assert.equal(stopped.code, 0);
+  assert.equal(JSON.parse(stopped.stdout).stopped, true);
+  await ended;
+  assert.equal(existsSync(lock), false);
+});

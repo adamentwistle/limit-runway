@@ -35,7 +35,7 @@ runway watch --act                     # does it
 
 `watch` only reports until you add `--act`. With `--act` it pauses when a limit reaches 95%, or when a good forecast says 100% within 30 minutes. A limit that resets within 15 minutes is left alone. It resumes a minute after the reset.
 
-`runway pause` pauses by hand, with `--for 30m` or `--until 14:30` if you like. `runway resume` releases everything at once, and watch then leaves that limit alone until it resets.
+`runway pause` pauses by hand, with `--for 30m` or `--until 14:30` if you like. `runway resume` releases everything at once, and watch then leaves that limit alone until it resets. `runway watch --stop` ends a running `watch --act`.
 
 There are three ways to pause. Use whichever fits each agent.
 
@@ -122,7 +122,9 @@ Ask your agent to add it from [herdr.dev/mods](https://herdr.dev/gallery/?type=m
 
 It puts you on a runway at dusk: how far along you are is how much you've used, the far end is 100%, and the sun on the horizon is the reset. There's a plane for each plan, Claude's in orange left of the centreline and Codex's in white right of it, each at that plan's most at-risk limit with its percent beside it. The time until the first limit runs out sits on a departures-board display, the lights and sky follow the forecast, and with no forecast there's fog ahead. The other limits sit under it with sparklines, beside the state and a Pause or Resume button. It runs the `runway` CLI through `exec`, and tells you how to install it if it's missing. Pause there includes `--herdr`, so it interrupts working agents.
 
-The pill at the top says **Watching** only while `runway watch --act` is running, because that's the watcher that can pause things. A report-only `runway watch` prints what it would do and doesn't count, so with only that running the pill says **Not watching**.
+The pill at the top says **Watching** only while `runway watch --act` is running, because that's the watcher that can pause things, and **Paused** while paused. Otherwise there's no pill. A report-only `runway watch` doesn't count.
+
+Beside it, hover **i** for how it works. **⋯** opens a menu of the CLI's commands: the Claude login on or off, start or stop the pausing watcher (it starts in a Herdr terminal of its own with `hc`), pause for 30 minutes or until the next reset, resume, and install or remove the Claude Code hook. Anything that can pause agents asks first.
 
 ## Tested
 

@@ -5,10 +5,10 @@
 // pixels, so `appSize` divides them. A path's coordinates are written as percents of its own box, so it lands on the elements
 // around it at any zoom, whatever a platform does with a plain number.
 import { Background, PathBuilder, div } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { HoverCard, h_flex, v_flex } from "gpui-base";
 import { settings } from "herdr";
 import {
-  INSTALL_LINE, RUNWAY_LIGHTS, appSize, axisTime, chartOf, chaseFrames, chaseStops, controlWord, curveThrough, flapChars, heroOf, horizonOf, CLAUDE_ORANGE, LANE, PLANE_WHITE, planesOf, lightsOf, moodOf, nowOf, othersOf,
+  INFO_LINES, INSTALL_LINE, RUNWAY_LIGHTS, menuOf, appSize, axisTime, chartOf, chaseFrames, chaseStops, controlWord, curveThrough, flapChars, heroOf, horizonOf, CLAUDE_ORANGE, LANE, PLANE_WHITE, planesOf, lightsOf, moodOf, nowOf, othersOf,
   pauseLine, percentText, rowTime, runwayOf, sceneOf, stateWord, toneOf,
 } from "./logic.js";
 
@@ -321,6 +321,36 @@ function others(view, limits, now, t, panelWidth, wide, side) {
   return div().flex_none().px(side).pt(6).child(v_flex().id("limits").h(Math.min(4, limits.length) * ROW_H).overflow_y_scrollbar().children(limits.map((limit) => row(view, limit, now, t))));
 }
 
+// A 24px icon button in the header, on `raised` with a `border` like the panel's other buttons.
+const iconButton = (id, glyph, t) => h_flex().id(id).size(24).flex_none().items_center().justify_center().rounded(7).bg(t.raised).border(1).border_color(t.border)
+  .text_size(12).font_semibold().text_color(t.muted).cursor_pointer().hover((s) => s.bg(t.hover)).child(glyph);
+
+// Hover the "i" for about 150 ms and a few lines on how it works show under it.
+function info(t) {
+  return h_flex().flex_none().child(HoverCard.new("info-card").open_delay(150).close_delay(200).anchor("bottom_right").trigger(iconButton("info", "i", t))
+    .content(v_flex().id("info-lines").w(260).gap(6).p(12).rounded(8).bg(t.popover).border(1).border_color(t.border)
+      .children(INFO_LINES.map((line) => div().text_size(12).line_height(1.4).text_color(t.foreground).child(line)))));
+}
+
+const menuButton = (view, t) => iconButton("menu", "\u22EF", t).on_click((_event, cx) => view.toggleMenu(cx));
+
+// The menu's rows. An item that can pause agents turns, on its first press, into Cancel and its confirm word on `blocked`.
+function menuRow(view, item, t) {
+  if (view.menuConfirm === item.id) {
+    return h_flex().id(`menu-${item.id}`).h(30).px(4).gap(6).items_center()
+      .child(button("menu-cancel", "Cancel", t.raised, t.foreground, t.border, (cx) => view.cancelMenu(cx)).h(26))
+      .child(button("menu-confirm", item.confirm, t.blocked, t.background, t.blocked, (cx) => view.choose(item, cx, true)).h(26));
+  }
+  return h_flex().id(`menu-${item.id}`).h(30).px(10).gap(10).items_center().rounded(6).cursor_pointer().hover((s) => s.bg(t.hover)).on_click((_event, cx) => view.choose(item, cx))
+    .child(div().flex_1().min_w(0).truncate().text_size(12.5).text_color(t.foreground).child(item.label))
+    .when(Boolean(item.state), (e) => e.child(div().flex_none().text_size(12).text_color(item.state === "On" ? t.accent : t.muted).child(item.state)));
+}
+
+function menuList(view, t, top, side) {
+  return v_flex().id("menu-list").absolute().top(top).right(side).w(236).p(4).gap(1).rounded(8).bg(t.popover).border(1).border_color(t.border)
+    .children(menuOf(view.reply, nowOf(view.reply)).map((item) => menuRow(view, item, t)));
+}
+
 function pill(state, t) {
   const colour = t[state.colour];
   return h_flex().flex_none().h(24).px(9).gap(6).items_center().rounded_full().bg(tint(t.surface, "bf")).border(1).border_color(tint(colour, "59"))
@@ -377,11 +407,12 @@ const message = (id, text, colour) => div().id(id).text_size(12).line_height(1.4
 
 export function panel(view, t) {
   const { width, height } = appSize(view.size, settings()?.zoom || 1) ?? { width: 340, height: 540 }, wide = width >= WIDE, side = wide ? 24 : 16;
-  const root = v_flex().id("root").size_full().bg(t.surface).on_size_change((size, cx) => view.sized(size, cx));
+  const root = v_flex().id("root").relative().size_full().bg(t.surface).on_size_change((size, cx) => view.sized(size, cx));
   const known = Boolean(view.reply) && !view.missing;
   const head = h_flex().flex_none().h(32).gap(10).px(side).mt(wide ? 16 : 12).items_center()
     .child(div().flex_1().min_w(0).text_size(13).font_semibold().text_color(t.foreground).child("Runway"))
-    .when(Boolean(view.reply), (e) => e.child(pill(stateWord(view.reply), t)))
+    .when(Boolean(stateWord(view.reply)), (e) => e.child(pill(stateWord(view.reply), t)))
+    .when(known, (e) => e.child(info(t)).child(menuButton(view, t)))
     .when(known && wide && Boolean(view.reply.limits?.length), (e) => e.child(h_flex().flex_none().gap(8).when(!view.confirming, (b) => b.w(104)).child(control(view, t))));
 
   if (view.missing) {
@@ -404,5 +435,6 @@ export function panel(view, t) {
       .when(Boolean(view.problem), (e) => e.child(message("note", view.problem, t.blocked)))
       .when(!view.problem && Boolean(notes.length), (e) => e.child(message("notes", notes.join(". "), t.muted)))
       .when(!wide, (e) => e.child(control(view, t)))
-      .when(Boolean(pinControl(view, t)), (e) => e.child(pinControl(view, t))));
+      .when(Boolean(pinControl(view, t)), (e) => e.child(pinControl(view, t))))
+    .when(view.menuOpen, (e) => e.child(menuList(view, t, (wide ? 16 : 12) + 36, side)));
 }

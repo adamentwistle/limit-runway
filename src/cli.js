@@ -20,6 +20,7 @@ const USAGE = `runway: forecasts when a plan limit runs out, and pauses agents b
   runway status [--json]            each limit, its burn rate and forecast
   runway watch                      keeps sampling and says what it would do
   runway watch --act                pauses and resumes for real
+  runway watch --stop               ends the running watch --act
   runway pause                      pauses now, until you resume
   runway resume                     releases everything at once
   runway hook                       the Claude Code PreToolUse hook
@@ -81,6 +82,7 @@ const snapshot = (paths, env) => {
     held: heldCount(paths),
     watching: watcherRunning(paths),
     hook: hookedFor(process.cwd(), env),
+    login: loadConfig(paths).sources?.endpoint ?? null,
   };
 };
 
@@ -136,15 +138,28 @@ const tickLine = (result, now) => {
   return null;
 };
 
+// Ends the running `watch --act`: SIGTERM to the pid in its lock, then waits up to 5 s for it to let the lock go.
+async function stopWatcher(paths, json) {
+  const pid = watcherRunning(paths) ? Number(readFileSync(paths.watchLock, "utf8")) : null;
+  if (pid) {
+    process.kill(pid, "SIGTERM");
+    for (let i = 0; i < 50 && watcherRunning(paths); i++) await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  const stopped = Boolean(pid) && !watcherRunning(paths);
+  say(json ? JSON.stringify({ stopped }) : pid ? (stopped ? "Stopped the watcher." : "The watcher didn't stop.") : "No watcher is running.");
+  return pid && !stopped ? 1 : 0;
+}
+
 async function watch(args, paths, env) {
   const { values } = parseArgs({
     args,
     options: {
       act: { type: "boolean" }, herdr: { type: "boolean" }, machines: { type: "boolean" }, once: { type: "boolean" }, json: { type: "boolean" },
       "on-pause": { type: "string" }, "on-resume": { type: "string" }, "pause-at": { type: "string" }, "forecast-minutes": { type: "string" },
-      interval: { type: "string" }, "no-endpoint": { type: "boolean" },
+      interval: { type: "string" }, "no-endpoint": { type: "boolean" }, stop: { type: "boolean" },
     },
   });
+  if (values.stop) return stopWatcher(paths, values.json);
   const config = loadConfig(paths);
   if (values["pause-at"] !== undefined) config.pauseAt = Number(values["pause-at"]);
   if (values["forecast-minutes"] !== undefined) config.forecastMinutes = Number(values["forecast-minutes"]);
