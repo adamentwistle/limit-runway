@@ -7,7 +7,7 @@ import { root } from "./helpers.mjs";
 import { fakeCx, world } from "./stubs.mjs";
 
 const { default: Runway } = await import("../herdr/mods/runway/main.js");
-const { INSTALL_LINE, commandNames, stateWord, toneOf } = await import("../herdr/mods/runway/logic.js");
+const { INFO_LINES, INSTALL_LINE, commandNames, menuOf, stateWord, toneOf, watchStartArgs } = await import("../herdr/mods/runway/logic.js");
 
 const WINDOWS = process.platform === "win32";
 const AN_HOUR_ON = () => new Date(Date.now() + 2 * 3600000).toISOString();
@@ -175,7 +175,7 @@ test("the state word and a limit's colour", () => {
   const now = Date.now(), inMinutes = (m) => new Date(now + m * 60000).toISOString();
   assert.equal(stateWord({ pause: {} }).word, "Paused");
   assert.equal(stateWord({ watching: true }).colour, "accent");
-  assert.equal(stateWord({}).word, "Not watching");
+  assert.equal(stateWord({}), null);
   assert.equal(toneOf({ forecast: { state: "hits", hitsAt: inMinutes(30) } }, now), "blocked");
   assert.equal(toneOf({ forecast: { state: "hits", hitsAt: inMinutes(126) } }, now), "working");
   assert.equal(toneOf({ forecast: { state: "at-limit" } }, now), "blocked");
@@ -251,4 +251,127 @@ test("the pin button is only in the overlay, and runway.pin presses it", async (
   script(ok(status()));
   await open({ overlay: "o1" });
   assert.deepEqual(world.ran, [{ name: "layout.show", args: { id: "r1" } }]);
+});
+
+test("with nothing watching and nothing paused there's no pill", async () => {
+  script(ok(status({ watching: false })));
+  const { tree } = await open();
+  assert.equal(tree().find("state"), null);
+});
+
+const NOW = Date.parse("2026-11-07T12:00:00Z");
+const ids = (items) => items.map((i) => i.id);
+
+test("the menu offers what the CLI can do from here, and only what fits the state", () => {
+  const reset = new Date(NOW + 90 * 60000).toISOString();
+  const quiet = { limits: [{ id: "a", resetAt: reset }, { id: "b", resetAt: new Date(NOW + 9000 * 60000).toISOString() }], login: true, watching: false, pause: null, hook: false };
+  const items = menuOf(quiet, NOW);
+  assert.deepEqual(ids(items), ["login", "watch", "pause-30m", "pause-reset", "hook"]);
+  const by = Object.fromEntries(items.map((i) => [i.id, i]));
+  assert.deepEqual(by.login.run, { cli: ["login", "off"] });
+  assert.equal(by.login.state, "On");
+  assert.equal(by.login.confirm, null);
+  assert.deepEqual(by.watch.run, { watcher: "start" });
+  assert.ok(by.watch.confirm, "starting the pausing watcher asks first");
+  assert.deepEqual(by["pause-30m"].run, { cli: ["pause", "--herdr", "--for", "30m", "--json"] });
+  assert.ok(by["pause-30m"].confirm);
+  assert.deepEqual(by["pause-reset"].run, { cli: ["pause", "--herdr", "--until", reset, "--json"] });
+  assert.ok(by["pause-reset"].confirm);
+  assert.deepEqual(by.hook.run, { cli: ["install-hook", "--user", "--yes"] });
+  assert.ok(by.hook.confirm);
+
+  const busy = menuOf({ ...quiet, login: false, watching: true, pause: { by: "manual" }, hook: true }, NOW);
+  assert.deepEqual(ids(busy), ["login", "watch", "resume", "hook"]);
+  const now = Object.fromEntries(busy.map((i) => [i.id, i]));
+  assert.deepEqual(now.login.run, { cli: ["login", "on"] });
+  assert.equal(now.login.state, "Off");
+  assert.deepEqual(now.watch.run, { cli: ["watch", "--stop", "--json"] });
+  assert.deepEqual(now.resume.run, { cli: ["resume", "--json"] });
+  assert.deepEqual(now.hook.run, { cli: ["install-hook", "--user", "--remove", "--yes"] });
+  for (const item of [now.login, now.watch, now.resume, now.hook]) assert.equal(item.confirm, null, item.id);
+
+  assert.deepEqual(ids(menuOf({ ...quiet, limits: [] }, NOW)), ["login", "watch", "pause-30m", "hook"]);
+  const older = menuOf({ ...quiet, login: undefined }, NOW)[0];
+  assert.equal(older.state, null, "an older CLI doesn't say");
+  assert.deepEqual(older.run, { cli: ["login", "on"] });
+});
+
+test("the watcher starts in a kept Herdr terminal of its own", () => {
+  assert.deepEqual(watchStartArgs("runway"), ["run", "--bg", "--no-parent", "--keep", "--label", "runway=watch", "--", "runway", "watch", "--act", "--herdr"]);
+});
+
+const menuReply = (more = {}) => status({ watching: false, login: true, hook: false, ...more });
+
+test("the menu opens from its button and closes again", async () => {
+  script(ok(menuReply()));
+  const { cx, tree } = await open();
+  assert.equal(tree().find("menu-list"), null);
+  tree().find("menu").press({}, cx);
+  assert.ok(tree().find("menu-list"));
+  assert.match(tree().find("menu-login").text(), /Use Claude login/);
+  assert.match(tree().find("menu-login").text(), /On/);
+  tree().find("menu").press({}, cx);
+  assert.equal(tree().find("menu-list"), null);
+});
+
+test("the login toggle runs at once, then reads again", async () => {
+  const asked = script(ok(menuReply()), ok({}), ok(menuReply({ login: false })));
+  const { cx, tree } = await open();
+  tree().find("menu").press({}, cx);
+  tree().find("menu-login").press({}, cx);
+  await cx.settled();
+  await cx.settled();
+  assert.deepEqual(asked.slice(1).map((a) => a.args), [["login", "off"], ["status", "--json"]]);
+  assert.equal(tree().find("menu-list"), null);
+});
+
+for (const [id, command, args] of [
+  ["watch", "hc", watchStartArgs("runway")],
+  ["pause-30m", "runway", ["pause", "--herdr", "--for", "30m", "--json"]],
+  ["hook", "runway", ["install-hook", "--user", "--yes"]],
+]) {
+  test(`${id} asks first, Cancel does nothing, and the confirm runs it`, async () => {
+    const asked = script(ok(menuReply()));
+    const { cx, tree } = await open();
+    tree().find("menu").press({}, cx);
+    tree().find(`menu-${id}`).press({}, cx);
+    assert.equal(asked.length, 1, "nothing runs on the first press");
+    assert.ok(tree().find("menu-confirm"));
+    tree().find("menu-cancel").press({}, cx);
+    assert.equal(tree().find("menu-confirm"), null);
+    await cx.settled();
+    assert.equal(asked.length, 1, "Cancel runs nothing");
+
+    tree().find(`menu-${id}`).press({}, cx);
+    tree().find("menu-confirm").press({}, cx);
+    await cx.settled();
+    await cx.settled();
+    if (!WINDOWS) assert.deepEqual([asked[1].command, asked[1].args], [command, args]);
+    assert.deepEqual(asked.at(-1).args, ["status", "--json"]);
+  });
+}
+
+test("stopping the watcher doesn't ask", async () => {
+  const asked = script(ok(menuReply({ watching: true })));
+  const { cx, tree } = await open();
+  tree().find("menu").press({}, cx);
+  tree().find("menu-watch").press({}, cx);
+  await cx.settled();
+  assert.deepEqual(asked[1].args, ["watch", "--stop", "--json"]);
+});
+
+test("the info button says how it works in a few short lines", async () => {
+  script(ok(menuReply()));
+  const { tree } = await open();
+  assert.ok(tree().find("info"));
+  assert.ok(INFO_LINES.length >= 3 && INFO_LINES.length <= 5);
+  assert.match(INFO_LINES.join(" "), /watcher/);
+  for (const line of INFO_LINES) assert.ok(line.length < 120, line);
+});
+
+test("runway.menu opens the overlay's menu", async () => {
+  Object.assign(world, { tree: null, ran: [], commands: ["menu"] });
+  script(ok(menuReply()));
+  const { tree } = await open({ overlay: "o1" });
+  assert.ok(tree().find("menu-list"));
 });

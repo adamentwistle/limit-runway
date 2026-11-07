@@ -54,7 +54,8 @@ export { Background, PathBuilder } from ${JSON.stringify(import.meta.url)};
 export const div = () => element("div");`,
   "gpui-base": `import { element } from ${JSON.stringify(import.meta.url)};
 export const v_flex = () => element("v_flex");
-export const h_flex = () => element("h_flex");`,
+export const h_flex = () => element("h_flex");
+export const HoverCard = { new: (id) => { const card = element("hovercard").id(id); card.trigger = function (v) { return this.child(v); }; card.content = function (v) { return this.child(v); }; return card; } };`,
   herdr: `import { world, theme as colours } from ${JSON.stringify(import.meta.url)};
 export const exec = (...args) => world.exec(...args);
 export const props = () => world.props;

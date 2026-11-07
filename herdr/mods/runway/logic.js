@@ -40,11 +40,48 @@ export const appSize = (size, zoom = 1) => (size ? { width: size.width / zoom, h
 export const nowOf = (reply) => msOf(reply?.now) ?? Date.now();
 
 // The state word and its theme colour.
+// Only when something is happening: paused, or the pausing watcher running. Otherwise there's no pill at all.
 export function stateWord(reply) {
   if (reply?.pause) return { word: "Paused", colour: "blocked" };
   if (reply?.watching) return { word: "Watching", colour: "accent" };
-  return { word: "Not watching", colour: "dim" };
+  return null;
 }
+
+// The pausing watcher runs in a Herdr terminal of its own, kept by hc, so it outlives the panel. `watch --stop` ends it.
+export const watchStartArgs = (program) => ["run", "--bg", "--no-parent", "--keep", "--label", "runway=watch", "--", program, "watch", "--act", "--herdr"];
+
+/**
+ * The header menu: the CLI's commands that make sense from here, for the state the reply is in.
+ * Each item is { id, label, state, run, confirm }. run is { cli: args } for the runway CLI, or { watcher: "start" }.
+ * confirm, when set, is the word on the button that runs it: anything that can pause agents asks first.
+ */
+export function menuOf(reply, now) {
+  const items = [];
+  // An older CLI doesn't say, so there's no state to show, and the press turns it on.
+  const login = reply?.login === true, known = typeof reply?.login === "boolean";
+  items.push({ id: "login", label: "Use Claude login", state: known ? (login ? "On" : "Off") : null, run: { cli: ["login", login ? "off" : "on"] }, confirm: null });
+  items.push(reply?.watching
+    ? { id: "watch", label: "Stop pausing watcher", state: null, run: { cli: ["watch", "--stop", "--json"] }, confirm: null }
+    : { id: "watch", label: "Start pausing watcher", state: null, run: { watcher: "start" }, confirm: "Start watcher" });
+  if (reply?.pause) items.push({ id: "resume", label: "Resume", state: null, run: { cli: ["resume", "--json"] }, confirm: null });
+  else {
+    items.push({ id: "pause-30m", label: "Pause for 30m", state: null, run: { cli: ["pause", "--herdr", "--for", "30m", "--json"] }, confirm: "Interrupt agents" });
+    const next = (reply?.limits ?? []).map((l) => msOf(l.resetAt)).filter((ms) => ms !== null && ms > now).sort((a, b) => a - b)[0];
+    if (next !== undefined) items.push({ id: "pause-reset", label: `Pause until ${axisTime(next, now)}`, state: "next reset", run: { cli: ["pause", "--herdr", "--until", new Date(next).toISOString(), "--json"] }, confirm: "Interrupt agents" });
+  }
+  items.push(reply?.hook
+    ? { id: "hook", label: "Remove Claude Code hook", state: null, run: { cli: ["install-hook", "--user", "--remove", "--yes"] }, confirm: null }
+    : { id: "hook", label: "Install Claude Code hook", state: null, run: { cli: ["install-hook", "--user", "--yes"] }, confirm: "Install hook" });
+  return items;
+}
+
+// What the info button says.
+export const INFO_LINES = [
+  "Readings come from the runway CLI: Claude's usage caches or login, and Codex's session files, every minute.",
+  "Each plane is a plan at its most at-risk limit. The far end is 100% and the sun is the reset.",
+  "The sky and lights follow the forecast. Fog means there isn't one yet.",
+  "It only pauses agents if you start the pausing watcher, or press Pause.",
+];
 
 // A limit's colour. Only a forecast can make it anything but calm, and with no forecast it claims nothing.
 export function toneOf(limit, now) {

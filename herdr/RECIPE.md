@@ -23,7 +23,14 @@ One column on `surface`, from a 320px side panel to a full tab. Colours are them
   - Danger, inside the hour or at 100%: the glow turns `blocked` and the lights go amber then red.
   - Held, while paused: the sky drains to grey, the lights ahead dim, and a pulsing bar of red stop lights sits in front of the aircraft.
   - Fog, with no forecast: a grey sky, dim lights, and fog over the runway ahead, because there's nothing honest to say about it.
-- **Header:** "Runway" in 13px semibold `foreground`. At the right a 24px pill: a 6px dot and the state in 12px medium. "Paused" in `blocked`, "Watching" in `accent`, "Not watching" in `dim`.
+- **Header:** "Runway" in 13px semibold `foreground`. At the right, only while something is happening, a 24px pill: a 6px dot and the state in 12px medium, "Paused" in `blocked` or "Watching" in `accent`. Otherwise no pill. Then two 24px icon buttons on `raised` with a `border`, radius 7: "i" and "⋯".
+- **Info:** hovering "i" for 150ms opens a 260px card on `popover` under it, anchored at its bottom right, with four lines of 12px `foreground`: where readings come from, what the planes, far end and sun mean, what the sky and fog mean, and that it only pauses agents once the pausing watcher is started or Pause is pressed.
+- **Menu:** "⋯" opens a 236px list on `popover` under the header at the right, radius 8, with 30px rows of 12.5px `foreground` and a state in 12px at the right. Pressing "⋯" again closes it. Rows, by state:
+  - `Use Claude login`, with `On` in `accent` or `Off` in `muted`. Runs `runway login off` or `runway login on` at once.
+  - `Start pausing watcher`, or `Stop pausing watcher` while one runs. Start runs `hc run --bg --no-parent --keep --label runway=watch -- runway watch --act --herdr`, a kept Herdr terminal of its own, so it outlives the panel and `exec`'s 30 s. Stop runs `runway watch --stop --json`, which ends whichever watcher holds the lock, however it was started.
+  - `Pause for 30m` (`runway pause --herdr --for 30m --json`) and `Pause until 14:20`, the next reset (`--until` it), or `Resume` while paused. "Pause until" has no time box, because the panel has no text input; the next reset is the time that matters.
+  - `Install Claude Code hook` (`runway install-hook --user --yes`), or `Remove Claude Code hook` (`--remove`) when the reply's `hook` says it's there.
+  - Anything that can pause agents asks first: Start, both Pauses and Install turn the row into `Cancel` on `raised` and the confirm word on `blocked` (`Start watcher`, `Interrupt agents`, `Install hook`), the same as the Pause control. Login, Stop, Resume and Remove don't ask. Every run reads again after.
 - **Hero:** one line of 13px medium `foreground`, then the time on board tiles: one tile for each digit, split across the middle, in Geist Mono, 19% of the panel's width tall, from 62 to 92px. Units are small beside them. Which limit and what it says:
   - The limit that runs out first: "Claude 5-hour runs out in", `2h 06m`. `working` until the last hour, then `blocked`.
   - A limit already at 100%, which comes first: "Claude 5-hour is at 100%. Resets in", `38m`, `blocked`.
@@ -49,13 +56,13 @@ With no limits it reads "No limits found." Before the first answer it reads "Rea
 - **A pause whose time is up:** if the reply says `due`, it runs `runway resume --due --json`, which sends the resume line to interrupted terminals. It does nothing else by itself. It never starts a pause. For that, run `runway watch --act`.
 - **A failed read:** the last good numbers stay, with the problem under them.
 - **Pin to sidebar:** reads `layout()` on every render, so it's right after a hide from anywhere else. Where the shown layout has a runway block it runs `layout.show` on it and on any hidden parent, and Unpin runs `layout.hide`. Where it has none and the layout is the person's own, Pin adds `{ "id": "runway", "type": "block", "size": { "px": 340 }, "min": 320, "max": 640, "content": { "mod": "runway" } }` at the right end of the row that holds the terminals, beside the side panel, with `layout.set`, and Unpin then hides it. Where it has none and the layout is shipped (`main`, `terminals`, `win98`), there's no button, because a shipped layout won't take it.
-- **Keys:** `ctrl-shift-m` opens it, again closes it, and so does Esc. `runway.pin` presses Pin in the open overlay.
+- **Keys:** `ctrl-shift-m` opens it, again closes it, and so does Esc. `runway.pin` presses Pin in the open overlay, and `runway.menu` opens or closes the menu.
 - **Motion:** lights chase up the centreline from you toward the far end, faster as it gets urgent. The sun breathes, the far end pulses in a warning or danger, and the stop bar pulses while held. All of it is native, from `.frames` and `.loop`, and stops when it isn't drawn. Held and fog have no chase. No timer redraws anything.
 
 ## Built from
 
 - One mod, `mods/runway/`, with no layout. `mod.json`: `{ "place": "right", "size": 340, "title": "Runway", "overlay": { "width": 360, "height": 540 } }`. `keys.json`: `{ "global": { "ctrl-shift-m": "mod.open:runway" } }`.
-- `props`: `{ "demo": true }` uses made-up limits and needs no CLI. So do `"paused"`, `"confirm"`, `"safe"`, `"limit"`, `"few"` and `"stale"`, one for each state. `{ "command": "C:/full/path/runway.cmd" }` names the CLI.
+- `props`: `{ "demo": true }` uses made-up limits and needs no CLI. So do `"paused"`, `"confirm"`, `"menu"` (menu open), `"safe"`, `"limit"`, `"few"` and `"stale"`, one for each state. `{ "command": "C:/full/path/runway.cmd" }` names the CLI.
 - To open it beside a terminal: `herdr-app do pane.split '{"direction":"right","mod":"runway"}'`.
 - `main.js`: the state, the one timer, the CLI calls. `logic.js`: arguments, reply reading, the hero, the mood, the runway's perspective, the lights, with no Herdr imports. `view.js`: the drawing. `demo.js`: the made-up limits, on the same curves as the CLI's `src/demo.js`.
 - From `herdr`: `exec`, `props`, `settings`, `theme`. From `gpui-kit`: `View`, `div`, `PathBuilder`, `Background`, and `window.paint_path`. From `gpui-base`: `h_flex`, `v_flex`. From `os`: `platform`. Also from `herdr`: `layout`, `shared("layout")`, `nextCommand` and `run`, only for `layout.show`, `layout.hide` and `layout.set` from Pin. `pin.js`: what Pin does, with no Herdr imports.
@@ -91,7 +98,7 @@ With no limits it reads "No limits found." Before the first answer it reads "Rea
 - `ctrl-shift-m` opens the overlay and the key closes it again.
 - In the overlay, Pin to sidebar shows the runway block and the button reads Unpin from sidebar, and Unpin hides it again. On a shipped layout with no block there's no button.
 - With the CLI missing, it shows the install line and no button.
-- With the CLI present, it shows the hero, the runway and the other limits, and the state reads "Not watching", or "Watching" while `runway watch --act` runs.
+- With the CLI present, it shows the hero, the runway and the other limits, with no pill, or "Watching" while `runway watch --act` runs.
 - After `runway pause --for 20m` in a terminal, the next read shows "Paused", the pause line and `Resume`.
 - `Resume` clears the pause, and `~/.limit-runway/pause.json` is gone.
 - Opened with `{ "demo": true }`, the hero reads `2h 06m` over a dusk sky, with Claude's orange aircraft at 57% left of the centreline, Codex's white one at 9% right of it, and red lights at the far end. With `{ "demo": "paused" }` it reads `13m` at 96%, grey, with the stop bar. Neither asks the CLI anything.

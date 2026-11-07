@@ -4,7 +4,7 @@ import { View } from "gpui-kit";
 import { exec, layout, nextCommand, props, run, shared, theme } from "herdr";
 import { platform } from "os";
 import { demoReply } from "./demo.js";
-import { commandNames, pauseArgs, readReply, resumeArgs, statusArgs } from "./logic.js";
+import { commandNames, pauseArgs, readReply, resumeArgs, statusArgs, watchStartArgs } from "./logic.js";
 import { pinPlan } from "./pin.js";
 import { panel, prepare } from "./view.js";
 
@@ -20,18 +20,22 @@ export default class Runway extends View {
     this.running = false;
     this.program = null;
     const given = initial ?? props() ?? {};
-    this.demo = given.demo ? { scene: given.demo === true || given.demo === "confirm" ? "watching" : given.demo } : null;
+    this.demo = given.demo ? { scene: given.demo === true || given.demo === "confirm" || given.demo === "menu" ? "watching" : given.demo } : null;
     this.confirming = given.demo === "confirm";
+    this.menuOpen = given.demo === "menu";
+    this.menuConfirm = null;
     this.size = null;
     this.plot = null;
     this.paths = {};
     this.overlay = given.overlay ?? null;
     this.names = given.command ? [given.command] : commandNames(/^win/i.test(String(platform())));
-    // A key can press it: "runway.pin" reaches the open overlay.
+    // A key can press it: "runway.pin" reaches the open overlay, and "runway.menu" opens or closes the menu.
     if (this.overlay != null) {
       cx.spawn(async (cx) => {
         while (!this.closed) {
-          if ((await nextCommand()) === "pin") this.pin(cx);
+          const command = await nextCommand();
+          if (command === "pin") this.pin(cx);
+          if (command === "menu") this.toggleMenu(cx);
         }
       });
     }
@@ -127,6 +131,58 @@ export default class Runway extends View {
 
   close() {
     this.closed = true;
+  }
+
+  toggleMenu(cx) {
+    this.menuOpen = !this.menuOpen;
+    this.menuConfirm = null;
+    cx.notify();
+  }
+
+  // A menu item. One that can pause agents asks first: its press shows Cancel and its confirm word, and only that runs it.
+  choose(item, cx, confirmed = false) {
+    if (this.busy) return;
+    if (item.confirm && !confirmed) {
+      this.menuConfirm = item.id;
+      cx.notify();
+      return;
+    }
+    this.menuOpen = false;
+    this.menuConfirm = null;
+    if (this.demo) {
+      cx.notify();
+      return;
+    }
+    this.busy = "menu";
+    cx.notify();
+    cx.spawn(async (cx) => {
+      try {
+        const { problem } = item.run.watcher ? await this.startWatcher(cx) : await this.runway(item.run.cli, cx);
+        this.problem = problem ?? null;
+      } finally {
+        this.busy = null;
+        cx.notify();
+      }
+      this.refresh(cx);
+    });
+  }
+
+  // `runway watch --act` outlives `exec`'s 30 s, so hc starts it in a terminal of its own.
+  async startWatcher(cx) {
+    try {
+      const result = await Promise.race([
+        exec("hc", watchStartArgs(this.program ?? this.names.at(-1))),
+        cx.sleep(EXEC_LIMIT_MS).then(() => ({ code: -1, stdout: "", stderr: "hc took too long" })),
+      ]);
+      return result.code === 0 ? {} : { problem: String(result.stderr || "hc couldn't start the watcher").trim().split("\n")[0] };
+    } catch {
+      return { problem: "hc isn't installed, so the watcher can't start here. Run runway watch --act --herdr in a terminal." };
+    }
+  }
+
+  cancelMenu(cx) {
+    this.menuConfirm = null;
+    cx.notify();
   }
 
   cancel(cx) {

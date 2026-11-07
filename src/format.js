@@ -46,7 +46,7 @@ export const pauseText = (pause, held, now) => {
 };
 
 // status --json: the shape the panel reads.
-export function statusReply(reading, { pause, held, watching, hook }, now) {
+export function statusReply(reading, { pause, held, watching, hook, login = null }, now) {
   return {
     now: new Date(now).toISOString(),
     limits: reading.limits.map((limit) => ({
@@ -69,6 +69,7 @@ export function statusReply(reading, { pause, held, watching, hook }, now) {
     held,
     watching,
     hook,
+    login,
     sources: reading.sources,
     notes: reading.notes,
   };
