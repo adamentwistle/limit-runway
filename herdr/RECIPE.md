@@ -30,6 +30,7 @@ One column on `surface`, from a 320px side panel to a full tab. Colours are them
 - **Pause line:** only while paused, 12px `foreground`, such as "Paused until 13:40. 2 tool calls held." The reason is left out, because the scene already shows it.
 - **Problem line:** only after a failure, 12px `blocked`.
 - **Control:** a 32px button, radius 8, 12.5px medium. `Pause` on `raised` with a `border`, `Resume` on `solid`, `Pausing` and `Resuming` while it works. A press on `Pause` swaps it for `Cancel` on `raised` and `Interrupt agents` on `blocked`.
+- **Pin:** only in the overlay, a full width button of the same kind under the control, on `raised` with a `border`: `Pin to sidebar`, or `Unpin from sidebar` while a runway block shows in the layout.
 
 With no limits it reads "No limits found." Before the first answer it reads "Reading". With no CLI it reads "The runway CLI isn't installed." and, under it in 12px Geist Mono `muted`, `npm install -g github:adamentwistle/limit-runway`, with no button.
 
@@ -43,7 +44,8 @@ With no limits it reads "No limits found." Before the first answer it reads "Rea
 - **Resume:** runs `runway resume --json`, then reads again.
 - **A pause whose time is up:** if the reply says `due`, it runs `runway resume --due --json`, which sends the resume line to interrupted terminals. It does nothing else by itself. It never starts a pause. For that, run `runway watch --act`.
 - **A failed read:** the last good numbers stay, with the problem under them.
-- **Keys:** `ctrl-shift-m` opens it, again closes it, and so does Esc.
+- **Pin to sidebar:** reads `layout()` on every render, so it's right after a hide from anywhere else. Where the shown layout has a runway block it runs `layout.show` on it and on any hidden parent, and Unpin runs `layout.hide`. Where it has none and the layout is the person's own, Pin adds `{ "id": "runway", "type": "block", "size": { "px": 340 }, "min": 320, "max": 640, "content": { "mod": "runway" } }` at the right end of the row that holds the terminals, beside the side panel, with `layout.set`, and Unpin then hides it. Where it has none and the layout is shipped (`main`, `terminals`, `win98`), there's no button, because a shipped layout won't take it.
+- **Keys:** `ctrl-shift-m` opens it, again closes it, and so does Esc. `runway.pin` presses Pin in the open overlay.
 - **Motion:** lights chase up the centreline from you toward the far end, faster as it gets urgent. The sun breathes, the far end pulses in a warning or danger, and the stop bar pulses while held. All of it is native, from `.frames` and `.loop`, and stops when it isn't drawn. Held and fog have no chase. No timer redraws anything.
 
 ## Built from
@@ -52,7 +54,7 @@ With no limits it reads "No limits found." Before the first answer it reads "Rea
 - `props`: `{ "demo": true }` uses made-up limits and needs no CLI. So do `"paused"`, `"confirm"`, `"safe"`, `"limit"`, `"few"` and `"stale"`, one for each state. `{ "command": "C:/full/path/runway.cmd" }` names the CLI.
 - To open it beside a terminal: `herdr-app do pane.split '{"direction":"right","mod":"runway"}'`.
 - `main.js`: the state, the one timer, the CLI calls. `logic.js`: arguments, reply reading, the hero, the mood, the runway's perspective, the lights, with no Herdr imports. `view.js`: the drawing. `demo.js`: the made-up limits, on the same curves as the CLI's `src/demo.js`.
-- From `herdr`: `exec`, `props`, `settings`, `theme`. From `gpui-kit`: `View`, `div`, `PathBuilder`, `Background`, and `window.paint_path`. From `gpui-base`: `h_flex`, `v_flex`. From `os`: `platform`. No Herdr commands are run.
+- From `herdr`: `exec`, `props`, `settings`, `theme`. From `gpui-kit`: `View`, `div`, `PathBuilder`, `Background`, and `window.paint_path`. From `gpui-base`: `h_flex`, `v_flex`. From `os`: `platform`. Also from `herdr`: `layout`, `shared("layout")`, `nextCommand` and `run`, only for `layout.show`, `layout.hide` and `layout.set` from Pin. `pin.js`: what Pin does, with no Herdr imports.
 - Programs: `runway` on macOS and Linux, `runway.cmd` then `runway` on Windows. No python.
 - No art. Geist and Geist Mono ship with Herdr.
 
@@ -83,6 +85,7 @@ With no limits it reads "No limits found." Before the first answer it reads "Rea
 - `herdr-app check mods/runway` passes.
 - `node --test` passes from the repo's root.
 - `ctrl-shift-m` opens the overlay and the key closes it again.
+- In the overlay, Pin to sidebar shows the runway block and the button reads Unpin from sidebar, and Unpin hides it again. On a shipped layout with no block there's no button.
 - With the CLI missing, it shows the install line and no button.
 - With the CLI present, it shows the hero, the runway and the other limits, and the state reads "Not watching", or "Watching" while `runway watch --act` runs.
 - After `runway pause --for 20m` in a terminal, the next read shows "Paused", the pause line and `Resume`.

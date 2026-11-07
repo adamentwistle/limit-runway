@@ -320,6 +320,17 @@ function control(view, t) {
   return button("control", controlWord(view.reply, view.busy), paused ? t.solid : t.raised, paused ? t.solid_foreground : t.foreground, paused ? t.solid : t.border, view.busy ? null : (cx) => view.press(cx));
 }
 
+// Only in the overlay, and only where the layout can take it.
+function pinControl(view, t) {
+  const plan = view.pinning?.();
+  if (!plan) return null;
+  return button("pin", plan.pinned ? "Unpin from sidebar" : "Pin to sidebar", t.raised, t.foreground, t.border, (cx) => view.pin(cx)).flex_none().w_full();
+}
+const pinFoot = (view, t, side) => {
+  const pin = pinControl(view, t);
+  return pin ? [div().flex_1(), div().flex_none().px(side).pb(14).child(pin)] : [];
+};
+
 // One board tile for each character, split across the middle like a departures board.
 function flap(char, h, colour, t) {
   const w = Math.round(h * 0.68);
@@ -355,12 +366,12 @@ export function panel(view, t) {
   if (view.missing) {
     return root.child(head).child(v_flex().id("missing").px(side).pt(12).gap(6)
       .child(div().text_size(13).text_color(t.foreground).child("The runway CLI isn't installed."))
-      .child(div().text_size(12).font_family(MONO).text_color(t.muted).child(INSTALL_LINE)));
+      .child(div().text_size(12).font_family(MONO).text_color(t.muted).child(INSTALL_LINE))).children(pinFoot(view, t, side));
   }
-  if (!view.reply) return root.child(head).child(div().px(side).pt(12).child(message("note", view.problem ?? "Reading", view.problem ? t.blocked : t.muted)));
+  if (!view.reply) return root.child(head).child(div().px(side).pt(12).child(message("note", view.problem ?? "Reading", view.problem ? t.blocked : t.muted))).children(pinFoot(view, t, side));
 
   const now = nowOf(view.reply), hero = heroOf(view.reply, now);
-  if (!hero) return root.child(head).child(div().px(side).pt(12).text_size(13).text_color(t.muted).child("No limits found.")).child(div().flex_1()).child(div().flex_none().p(side).child(control(view, t)));
+  if (!hero) return root.child(head).child(div().px(side).pt(12).text_size(13).text_color(t.muted).child("No limits found.")).child(div().flex_1()).child(v_flex().flex_none().p(side).gap(10).child(control(view, t)).when(Boolean(pinControl(view, t)), (e) => e.child(pinControl(view, t))));
 
   const line = pauseLine(view.reply), notes = view.reply.notes ?? [], h = flapHeight(width, height);
   const top = topOf(width, height);
@@ -371,5 +382,6 @@ export function panel(view, t) {
       .when(Boolean(line), (e) => e.child(message("pause", line, t.foreground)))
       .when(Boolean(view.problem), (e) => e.child(message("note", view.problem, t.blocked)))
       .when(!view.problem && Boolean(notes.length), (e) => e.child(message("notes", notes.join(". "), t.muted)))
-      .when(!wide, (e) => e.child(control(view, t))));
+      .when(!wide, (e) => e.child(control(view, t)))
+      .when(Boolean(pinControl(view, t)), (e) => e.child(pinControl(view, t))));
 }

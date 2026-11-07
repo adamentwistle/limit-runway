@@ -191,3 +191,64 @@ test("the mod uses no timers Herdr doesn't have, and no python", () => {
     assert.doesNotMatch(code, /python/i, name);
   }
 });
+
+const { pinPlan, withBlock } = await import("../herdr/mods/runway/pin.js");
+const terminals = () => ({ id: "root", type: "row", children: [{ id: "side", type: "column", children: [] }, { id: "work", type: "column", children: [{ id: "body", type: "row", children: [{ id: "main", type: "block", content: { tab: "active" } }, { id: "panel", type: "column", children: [] }] }, { id: "status", type: "block" }] }] });
+const withRunway = (hidden) => { const tree = terminals(); tree.children.push({ id: "r1", type: "block", content: { mod: "runway" }, ...(hidden ? { hidden: true } : {}) }); return tree; };
+
+async function overlay(tree, layoutName = "mine") {
+  Object.assign(world, { tree, layoutName, ran: [], commands: [] });
+  script(ok(status()));
+  return open({ overlay: "o1" });
+}
+
+test("a hidden runway block is shown by Pin to sidebar, and hidden by Unpin", async () => {
+  const { cx, tree } = await overlay(withRunway(true));
+  assert.equal(tree().find("pin").text(), "Pin to sidebar");
+  tree().find("pin").press({}, cx);
+  assert.deepEqual(world.ran, [{ name: "layout.show", args: { id: "r1" } }]);
+  world.tree = withRunway(false);
+  assert.equal(tree().find("pin").text(), "Unpin from sidebar");
+  tree().find("pin").press({}, cx);
+  assert.deepEqual(world.ran[1], { name: "layout.hide", args: { id: "r1" } });
+});
+
+test("a hidden column around the block is shown too", () => {
+  const tree = terminals();
+  tree.children.push({ id: "wrap", type: "column", hidden: true, children: [{ id: "r1", type: "block", content: { mod: "runway" } }] });
+  assert.deepEqual(pinPlan(tree, "mine").commands, [["layout.show", { id: "wrap" }]]);
+});
+
+test("a person's own layout with no block gets one beside the side panel, and nothing else changes", async () => {
+  const before = terminals();
+  const { cx, tree } = await overlay(before);
+  tree().find("pin").press({}, cx);
+  assert.equal(world.ran[0].name, "layout.set");
+  const body = world.ran[0].args.layout.children[1].children[0];
+  assert.deepEqual(body.children.map((node) => node.id), ["main", "panel", "runway"]);
+  assert.equal(body.children[2].size.px, 340);
+  assert.deepEqual(before, terminals());
+});
+
+test("a new block's id doesn't take one in use", () => {
+  const tree = terminals();
+  tree.children[0].id = "runway";
+  assert.equal(withBlock(tree).children[1].children[0].children[2].id, "runway-2");
+});
+
+test("a shipped layout with no block shows no pin button", async () => {
+  const { tree } = await overlay(terminals(), "main");
+  assert.equal(tree().find("pin"), null);
+  assert.equal(pinPlan({ type: "column", children: [] }, "mine"), null);
+});
+
+test("the pin button is only in the overlay, and runway.pin presses it", async () => {
+  Object.assign(world, { tree: withRunway(true), layoutName: "mine", ran: [], commands: [] });
+  script(ok(status()));
+  const { tree } = await open();
+  assert.equal(tree().find("pin"), null);
+  Object.assign(world, { ran: [], commands: ["pin"] });
+  script(ok(status()));
+  await open({ overlay: "o1" });
+  assert.deepEqual(world.ran, [{ name: "layout.show", args: { id: "r1" } }]);
+});

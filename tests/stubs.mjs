@@ -31,7 +31,7 @@ export const element = (tag) => new Proxy(new El(tag), {
   },
 });
 
-export const world = { exec: async () => ({ code: 0, stdout: "{}", stderr: "" }), props: {}, zoom: 1 };
+export const world = { exec: async () => ({ code: 0, stdout: "{}", stderr: "" }), props: {}, zoom: 1, tree: null, layoutName: "mine", ran: [], commands: [] };
 
 export const theme = Object.fromEntries(["surface", "raised", "hover", "foreground", "muted", "dim", "solid", "solid_foreground", "blocked", "working", "accent", "border", "input", "popover", "background", "canvas", "ansi5", "ansi6"].map((name, i) => [name, `#${String(i + 10).repeat(3)}`]));
 
@@ -58,6 +58,10 @@ export const h_flex = () => element("h_flex");`,
   herdr: `import { world, theme as colours } from ${JSON.stringify(import.meta.url)};
 export const exec = (...args) => world.exec(...args);
 export const props = () => world.props;
+export const layout = () => world.tree;
+export const nextCommand = () => (world.commands.length ? Promise.resolve(world.commands.shift()) : new Promise(() => {}));
+export const run = (name, args) => { world.ran.push({ name, args }); return null; };
+export const shared = (key) => (key === "layout" ? world.layoutName : undefined);
 export const settings = () => ({ zoom: world.zoom });
 export const theme = () => colours;`,
 };
@@ -82,7 +86,8 @@ export function fakeCx() {
     sleep: () => new Promise(() => {}),
     spawn(body) { tasks.push(body(cx)); },
     timer: { every(ms, handler) { cx.repeating.push({ ms, handler }); } },
-    settled: async () => { while (tasks.length) await tasks.shift(); },
+    // A task still waiting once everything ready has run, such as the overlay's wait for a command, is let go.
+    settled: async () => { while (tasks.length) await Promise.race([tasks.shift(), new Promise((done) => setImmediate(done))]); },
   };
   return cx;
 }
