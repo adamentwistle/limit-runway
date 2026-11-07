@@ -24,18 +24,21 @@ export default class Runway extends View {
     this.confirming = given.demo === "confirm";
     this.menuOpen = given.demo === "menu";
     this.menuConfirm = null;
+    this.infoOpen = false;
     this.size = null;
     this.plot = null;
     this.paths = {};
     this.overlay = given.overlay ?? null;
     this.names = given.command ? [given.command] : commandNames(/^win/i.test(String(platform())));
-    // A key can press it: "runway.pin" reaches the open overlay, and "runway.menu" opens or closes the menu.
-    if (this.overlay != null) {
+    // A key can press it: "runway.pin" reaches the open overlay, "runway.menu" opens or closes the menu, and "runway.info" the
+    // info card, in the overlay and in a docked panel alike.
+    {
       cx.spawn(async (cx) => {
         while (!this.closed) {
           const command = await nextCommand();
-          if (command === "pin") this.pin(cx);
+          if (command === "pin" && this.overlay != null) this.pin(cx);
           if (command === "menu") this.toggleMenu(cx);
+          if (command === "info") this.toggleInfo(cx);
         }
       });
     }
@@ -133,8 +136,16 @@ export default class Runway extends View {
     this.closed = true;
   }
 
+  // The info card held open, for a key. Hover opens the same card for a moment.
+  toggleInfo(cx) {
+    this.infoOpen = !this.infoOpen;
+    this.menuOpen = false;
+    cx.notify();
+  }
+
   toggleMenu(cx) {
     this.menuOpen = !this.menuOpen;
+    this.infoOpen = false;
     this.menuConfirm = null;
     cx.notify();
   }
