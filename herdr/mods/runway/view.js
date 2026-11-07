@@ -1,5 +1,5 @@
 // The drawing: a runway at dusk. You're the aircraft, how far along it is how much of the limit you've used, the far end is
-// 100% and the sun on the horizon is the reset. Colours are theme names only, faded with an alpha on the end.
+// 100% and the sun on the horizon is the reset. Colours are theme names, faded with an alpha on the end, except the planes' (logic.js).
 // Paths are kept on the view and made again only when the data or the size changes, because a render has about 55 ms.
 // Everything here is in the app's own units, which `.w()` and `.left()` scale by the zoom. `on_size_change` reports window
 // pixels, so `appSize` divides them. A path's coordinates are written as percents of its own box, so it lands on the elements
@@ -8,7 +8,7 @@ import { Background, PathBuilder, div } from "gpui-kit";
 import { h_flex, v_flex } from "gpui-base";
 import { settings } from "herdr";
 import {
-  INSTALL_LINE, RUNWAY_LIGHTS, appSize, axisTime, chartOf, chaseFrames, chaseStops, controlWord, curveThrough, flapChars, heroOf, horizonOf, lightsOf, moodOf, nowOf, othersOf,
+  INSTALL_LINE, RUNWAY_LIGHTS, appSize, axisTime, chartOf, chaseFrames, chaseStops, controlWord, curveThrough, flapChars, heroOf, horizonOf, CLAUDE_ORANGE, LANE, PLANE_WHITE, planesOf, lightsOf, moodOf, nowOf, othersOf,
   pauseLine, percentText, rowTime, runwayOf, sceneOf, stateWord, toneOf,
 } from "./logic.js";
 
@@ -71,7 +71,11 @@ const spot = ([x, y], r) => (r < 2.2 ? DIAMOND : ROUND).map(([cx, cy]) => [x + c
 
 // Seen from above with the nose pointing down the runway, then laid on it, so perspective shapes it like everything else.
 const AIRCRAFT = [[0, 1], [0.07, 0.86], [0.09, 0.32], [0.82, -0.12], [0.82, -0.26], [0.09, -0.06], [0.07, -0.56], [0.3, -0.78], [0.3, -0.9], [0, -0.8]];
-const aircraftShape = (rw, d, span, length) => [...AIRCRAFT, ...AIRCRAFT.slice(1, -1).reverse().map(([x, y]) => [-x, y])].map(([x, y]) => rw.at(d + y * length, x * span));
+const aircraftShape = (rw, d, span, length, lane = 0) => [...AIRCRAFT, ...AIRCRAFT.slice(1, -1).reverse().map(([x, y]) => [-x, y])].map(([x, y]) => rw.at(d + y * length, lane + x * span));
+
+// Claude's plane is orange and Codex's white, both fixed in logic.js. Codex's has an outline so it holds on a light runway.
+const planeColour = (provider, dark, t) => (provider === "claude" ? CLAUDE_ORANGE : dark ? t.foreground : PLANE_WHITE);
+const chipColour = (provider, dark, t) => (provider === "claude" ? CLAUDE_ORANGE : t.foreground);
 
 // Spread evenly by a small hash, so the stars stay put between renders.
 const scatter = (i, salt) => { const v = Math.sin(i * 12.9898 + salt * 78.233) * 43758.5453; return v - Math.floor(v); };
@@ -107,7 +111,7 @@ function backdrop(width, height, top) {
 }
 
 // What the reading decides.
-function drawings(model, base, width, height) {
+function drawings(model, planes, base, width, height) {
   const box = { width, height }, { rw } = base, out = {};
   out.behind = fill(box).shape(patch(rw, 0, Math.max(0.001, model.used))).build();
   if (model.used < 1) out.ahead = fill(box).shape(patch(rw, model.used, 1)).build();
@@ -123,19 +127,28 @@ function drawings(model, base, width, height) {
   }
   out.lights = Object.entries(buckets).map(([kind, pens]) => ({ kind, dot: pens.dot.build(), halo: pens.halo.build() }));
 
-  // Far off the aircraft keeps a size you can read, because that's when it matters most.
-  const you = Math.max(0.05, Math.min(0.95, model.used)), span = Math.max(0.5, 24 / (rw.half * rw.scale(you))), length = Math.min(0.15, 0.06 * (span / 0.5));
-  out.you = you;
-  out.aircraft = fill(box).shape(aircraftShape(rw, you, span, length)).build();
-  out.shadow = fill(box).shape(aircraftShape({ at: (d, u) => { const [x, y] = rw.at(d, u); return [x + 2, y + 5]; } }, you, span, length)).build();
+  // Far off an aircraft keeps a size you can read, because that's when it matters most. Two of them keep to their own side of
+  // the centreline, far enough out that their wings can't cross, so side by side both still read.
+  const sized = (used) => { const you = Math.max(0.05, Math.min(0.95, used)), span = Math.max(0.5, 24 / (rw.half * rw.scale(you))); return { you, span, length: Math.min(0.15, 0.06 * (span / 0.5)) }; };
+  out.you = sized(model.used).you;
+  out.planes = planes.map((plane) => {
+    const { you, span, length } = sized(plane.used), lane = plane.lane === 0 ? 0 : Math.sign(plane.lane) * Math.max(LANE, 0.82 * span + 0.05);
+    const shape = aircraftShape(rw, you, span, length, lane);
+    return {
+      ...plane, you, lane, wing: 0.82 * span,
+      aircraft: fill(box).shape(shape).build(),
+      outline: stroke(1, box).shape(shape).build(),
+      shadow: fill(box).shape(aircraftShape({ at: (d, u) => { const [x, y] = rw.at(d, u); return [x + 2, y + 5]; } }, you, span, length, lane)).build(),
+    };
+  });
   if (model.landing !== null) out.landing = fill(box).shape(patch(rw, model.landing, model.landing + 0.014)).build();
   if (model.mood === "held") {
-    const bar = fill(box), d = Math.min(0.96, you + 0.11);
+    const bar = fill(box), d = Math.min(0.96, out.you + 0.11);
     for (let u = -0.84; u <= 0.85; u += 0.28) bar.shape(spot(rw.at(d, u), Math.max(1.3, 4 * rw.scale(d))));
     out.stopBar = bar.build();
     out.stopAt = rw.at(d, 0);
   }
-  if (model.mood === "fog") out.fog = fill(box).shape(patch(rw, Math.min(0.97, you + 0.08), 1, -1.5, 1.5)).build();
+  if (model.mood === "fog") out.fog = fill(box).shape(patch(rw, Math.min(0.97, out.you + 0.08), 1, -1.5, 1.5)).build();
   return out;
 }
 
@@ -179,9 +192,13 @@ function chase(model, d) {
   });
 }
 
-function marks(model, d, limit, width, t, colours, tone) {
-  const used = percentText(limit.used), size = chipSize(used), left = Boolean(model.crossing), [px, py] = d.rw.at(d.you, left ? -1 : 1);
-  const items = [chip("you-used", used, inside(left ? px - size - 12 : px + 12, size, width), py - 12, t.foreground, t)];
+function marks(model, d, width, t, colours, tone, dark) {
+  // Each plane's percent sits outside its own wing: alone, on the side away from the far end's chip. Claude left, Codex right.
+  const items = d.planes.map((plane) => {
+    const used = percentText(plane.limit.used), size = chipSize(used), left = plane.lane === 0 ? Boolean(model.crossing) : plane.lane < 0;
+    const [px, py] = d.rw.at(plane.you, plane.lane === 0 ? (left ? -1 : 1) : plane.lane + (left ? -plane.wing : plane.wing));
+    return chip(`used-${plane.provider}`, used, inside(left ? px - size - 12 : px + 12, size, width), py - 12, chipColour(plane.provider, dark, t), t);
+  });
   if (model.crossing) {
     const text = axisTime(model.crossing.at, model.now), [ex, ey] = d.rw.at(1, 1);
     items.push(chip("far-time", text, inside(ex + 8, chipSize(text), width), ey - 12, t.blocked, t));
@@ -201,11 +218,12 @@ function scene(view, hero, now, reply, t, side, least, top, children) {
   const box = v_flex().id("scene").relative().flex_1().w_full().min_h(least).overflow_hidden().on_size_change((size, cx) => view.chartSized(size, cx));
   if (!view.plot) return box.children(children);
 
-  const { width, height } = appSize(view.plot, settings()?.zoom || 1), limit = hero.limit, mood = moodOf(hero, reply), dark = settings()?.dark ?? true;
+  const { width, height } = appSize(view.plot, settings()?.zoom || 1), limit = hero.limit, planes = planesOf(reply, now), mood = moodOf(hero, reply), dark = settings()?.dark ?? true;
   const base = backdropOf(view, width, height, top);
-  const { model, d } = kept(view, "scene", `${width}x${height}|${top}|${mood}|${signature(limit, now)}`, () => {
+  const { model, d } = kept(view, "scene", `${width}x${height}|${top}|${mood}|${signature(limit, now)}|${planes.map((p) => `${p.provider}:${p.lane}:${signature(p.limit, now)}`).join(",")}`, () => {
     const made = sceneOf(limit, mood, now);
-    return { model: made, d: { ...base, ...drawings(made, base, width, height) } };
+    const placed = planes.map((p) => ({ provider: p.provider, lane: p.lane, used: sceneOf(p.limit, mood, now).used, limit: p.limit }));
+    return { model: made, d: { ...base, ...drawings(made, placed, base, width, height) } };
   });
   const colours = palette(mood, t), tone = t[hero.tone] ?? t.accent, ink = tone === t.foreground ? t.accent : tone;
   d.tone = ink;
@@ -234,12 +252,15 @@ function scene(view, hero, now, reply, t, side, least, top, children) {
     .children(on(d.fog, fade(dark ? t.muted : t.surface, dark ? "99" : "f2", "00")))
     .children(risky ? [div().absolute().left(d.rw.at(1, 0)[0] - 26).top(d.rw.at(1, 0)[1] - 13).w(52).h(26).rounded_full().bg(t.blocked).loop("opacity", { from: 0.08, to: 0.34, period: 2600 })] : [])
     .children(chase(model, d))
-    .children(on(d.shadow, tint(dark ? t.background : t.foreground, dark ? "8c" : "40")))
-    .children(on(d.aircraft, dark ? t.foreground : t.solid))
+    .children(d.planes.flatMap((p) => [
+      ...on(p.shadow, tint(dark ? t.background : t.foreground, dark ? "8c" : "40")),
+      ...on(p.aircraft, planeColour(p.provider, dark, t)),
+      ...on(p.outline, tint(dark ? t.background : t.foreground, dark ? "73" : "8c")),
+    ]))
     .children(on(d.stopBar, t.blocked))
     .children(d.stopAt ? [div().id("stop-bar").absolute().left(d.stopAt[0] - 60).top(d.stopAt[1] - 12).w(120).h(24).rounded_full().bg(t.blocked).loop("opacity", { from: 0.06, to: 0.26, period: 3200 })] : [])
     .children(on(d.foot, fade(t.surface, "00", "ff")))
-    .children(marks(model, d, limit, width, t, colours, ink))
+    .children(marks(model, d, width, t, colours, ink, dark))
     .children(children);
 }
 

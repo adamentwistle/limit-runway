@@ -6,12 +6,16 @@ A panel that puts you on a runway at dusk. How far along you are is how much of 
 
 ## What you see
 
-One column on `surface`, from a 320px side panel to a full tab. Colours are theme names only, faded by adding an alpha to the name's value. At 640px wide and up it has 24px side padding, Pause moves into the header, and the other limits become tiles. Below that it has 16px padding, Pause sits full width at the bottom, and the other limits are rows.
+One column on `surface`, from a 320px side panel to a full tab. Colours are theme names, faded by adding an alpha to the name's value. At 640px wide and up it has 24px side padding, Pause moves into the header, and the other limits become tiles. Below that it has 16px padding, Pause sits full width at the bottom, and the other limits are rows. The only fixed colours are the planes', in `logic.js`: Claude's orange `#ec7a3c`, because no theme name is orange in every theme (Meridian's `ansi3` is amber in dark and `working` is blue), and Codex's white `#ffffff` on a light theme.
 
 - **Scene:** fills the panel down to the other limits, with the header and hero over its sky. All of it is drawn with paths.
   - The sky is a gradient into a glow on the horizon, with stars in dark themes and a line of distant lights.
   - The runway recedes in perspective, with its far end just short of the horizon: threshold bars at both ends, aiming marks, centreline dashes and edge lights down both sides.
-  - You're the aircraft, drawn from above and laid on the runway so perspective shapes it, with a chip of your percent. Far off it keeps a size you can read.
+  - There's an aircraft for each provider, drawn from above and laid on the runway so perspective shapes it. Far off it keeps a size you can read.
+    - Each sits at its provider's most at-risk limit: the one that runs out first, 100% before anything, or with nothing running out, the fullest. A limit's provider is the reply's `provider`, or the start of its id.
+    - Claude's is orange, Codex's is white (`foreground` in a dark theme), each with a thin outline and its own chip of its percent, in its colour. Codex's chip has `foreground` text, so it reads on a light theme.
+    - With both, Claude's flies left of the centreline and Codex's right, far enough out that their wings can't cross, and each chip sits outside its own wing. With one provider there's one aircraft on the centreline, its chip on the side away from the far end's chip.
+    - The sky, lights, landing, far end and sun still follow the hero, the most at-risk limit overall. The stop bar and the fog sit ahead of the hero's aircraft.
   - The sun on the horizon is the reset, with a chip of its time beside it.
 - **Moods:** the forecast sets the whole scene, so it reads before any words do.
   - Calm, forecast safe: a teal sky from `accent` and `ansi6`. White lights run as far as the forecast reaches, to a stop bar with a chip of the percent you'll land on, and the lights past it are dim.
@@ -90,7 +94,7 @@ With no limits it reads "No limits found." Before the first answer it reads "Rea
 - With the CLI present, it shows the hero, the runway and the other limits, and the state reads "Not watching", or "Watching" while `runway watch --act` runs.
 - After `runway pause --for 20m` in a terminal, the next read shows "Paused", the pause line and `Resume`.
 - `Resume` clears the pause, and `~/.limit-runway/pause.json` is gone.
-- Opened with `{ "demo": true }`, the hero reads `2h 06m` over a dusk sky, with the aircraft at 57% and red lights at the far end. With `{ "demo": "paused" }` it reads `13m` at 96%, grey, with the stop bar. Neither asks the CLI anything.
+- Opened with `{ "demo": true }`, the hero reads `2h 06m` over a dusk sky, with Claude's orange aircraft at 57% left of the centreline, Codex's white one at 9% right of it, and red lights at the far end. With `{ "demo": "paused" }` it reads `13m` at 96%, grey, with the stop bar. Neither asks the CLI anything.
 - With `{ "demo": "few" }` or `{ "demo": "stale" }` there's fog ahead, no chase, no crossing and no landing, and it doesn't say nothing is at risk.
 - From 320px to a full tab, in light and dark, at zooms from 1.0 to 1.5, nothing overlaps and the control stays on screen.
 - With the pause over and nothing else running, the next read runs `resume --due` and the panel goes back to `Pause`.

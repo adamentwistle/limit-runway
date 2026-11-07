@@ -92,6 +92,34 @@ export function heroOf(reply, now) {
   return { limit: fullest, label: `${old}${fullest.label} resets in`, parts: timeParts(msOf(fullest.resetAt) - now), tone: "foreground" };
 }
 
+// Whose plan a limit is: the reply says, and an older reply's id or label starts with it.
+export const providerOf = (limit) => String(limit.provider ?? String(limit.id ?? limit.label ?? "").split(/[.\s]/)[0]).toLowerCase();
+
+// The only colours that aren't theme names. No theme name is orange in every theme (Meridian's ansi3 is amber in dark and
+// `working` is blue), so Claude's plane has a fixed orange that reads on the runway in light and dark, and Codex's is white.
+export const CLAUDE_ORANGE = "#ec7a3c";
+export const PLANE_WHITE = "#ffffff";
+
+const PLANE_ORDER = ["claude", "codex"];
+// How far off the centreline each plane sits, in the runway's half-widths, when both are on it. Claude left, Codex right.
+export const LANE = 0.46;
+
+// One plane for each provider, at that provider's most at-risk limit: the one that runs out soonest (100% first), or with
+// nothing running out, the fullest. Alone, a plane keeps the centreline.
+export function planesOf(reply, now) {
+  const groups = new Map();
+  for (const limit of reply?.limits ?? []) {
+    const provider = providerOf(limit);
+    groups.set(provider, [...(groups.get(provider) ?? []), limit]);
+  }
+  const rank = (p) => (PLANE_ORDER.includes(p) ? PLANE_ORDER.indexOf(p) : PLANE_ORDER.length);
+  const planes = [...groups].sort(([a], [b]) => rank(a) - rank(b)).slice(0, 2).map(([provider, limits]) => {
+    const risk = limits.filter(isRisk).sort((a, b) => (a.forecast.state === "at-limit") === (b.forecast.state === "at-limit") ? riskAt(a) - riskAt(b) : a.forecast.state === "at-limit" ? -1 : 1)[0];
+    return { provider, limit: risk ?? [...limits].sort((a, b) => (b.used ?? 0) - (a.used ?? 0))[0] };
+  });
+  return planes.map((plane, i) => ({ ...plane, lane: planes.length < 2 ? 0 : i === 0 ? -LANE : LANE }));
+}
+
 export const othersOf = (reply, hero) => (reply?.limits ?? []).filter((limit) => limit !== hero?.limit);
 
 // What a secondary row adds beside its percent: how long is left, only when it's running out.
